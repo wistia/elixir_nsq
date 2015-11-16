@@ -1,0 +1,2 @@
+defmodule ElixirNsq do
+end

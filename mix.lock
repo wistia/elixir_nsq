@@ -1,0 +1,5 @@
+%{"connection": {:hex, :connection, "1.0.1"},
+  "httpotion": {:hex, :httpotion, "2.1.0"},
+  "ibrowse": {:git, "https://github.com/cmullaparthi/ibrowse.git", "ea3305d21f37eced4fac290f64b068e56df7de80", [tag: "v4.1.2"]},
+  "poison": {:hex, :poison, "1.5.0"},
+  "secure_random": {:hex, :secure_random, "0.2.0"}}
