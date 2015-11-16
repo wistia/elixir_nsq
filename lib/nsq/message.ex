@@ -40,7 +40,7 @@ defmodule NSQ.Message do
   def handle_call(cmd, from, state) do
     case cmd do
       :process ->
-        spawn_link fn -> do_handle(state, from) end
+        spawn_link fn -> do_handle_process(state, from) end
       _else ->
         IO.inspect "Unhandled command #{inspect cmd} from #{from}"
     end
@@ -48,8 +48,8 @@ defmodule NSQ.Message do
   end
 
 
-  defp do_handle(%{message: message, handler: handler} = state, from) do
-    case call_handler(handler, message) do
+  defp do_handle_process(%{message: message, handler: handler} = state, from) do
+    case run_handler(handler, message) do
       {:ok} ->
         finish(state.socket, message)
         end_processing(message, from)
@@ -66,7 +66,7 @@ defmodule NSQ.Message do
   Handler can be either an anonymous function or a module that implements the
   `message` function.
   """
-  defp call_handler(handler, message) do
+  defp run_handler(handler, message) do
     if is_function(handler) do
       handler.(message.data, message)
     else
