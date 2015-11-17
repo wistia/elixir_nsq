@@ -19,7 +19,7 @@ defmodule NSQ.ConsumerTest do
     :ok
   end
 
-  test "#new establishes a connection to NSQ" do
+  test "#new establishes a connection to NSQ and processes messages" do
     test_pid = self
     consumer = new_test_consumer fn(body, msg) ->
       assert body == "HTTP message"
@@ -29,13 +29,9 @@ defmodule NSQ.ConsumerTest do
     end
 
     HTTPotion.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
+    assert_receive(:handled)
 
-    receive do
-      :handled -> :ok
-    after
-      500 ->
-        raise "timed out waiting for message to be processed"
-        :timeout
-    end
+    HTTPotion.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
+    assert_receive(:handled)
   end
 end

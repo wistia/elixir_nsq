@@ -40,7 +40,6 @@ defmodule NSQ.Message do
   """
   def handle_call(:process, from, state) do
     handler_pid = spawn_link(fn -> do_handle_process(state, from) end)
-    Logger.error "kick off"
     state = %{state | handler_pid: handler_pid}
     {:noreply, state}
   end
@@ -81,8 +80,8 @@ defmodule NSQ.Message do
   end
 
 
-  defp end_processing(message, {pid, ref} = from) do
-    GenServer.call(pid, {:done, message})
-    GenServer.stop(self)
+  defp end_processing(message, from) do
+    GenServer.reply(from, {:done, message})
+    Process.exit(self, :normal)
   end
 end

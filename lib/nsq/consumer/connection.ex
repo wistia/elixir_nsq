@@ -45,6 +45,7 @@ defmodule NSQ.Consumer.Connection do
 
   def handle_call({:done, message}, from, state) do
     IO.puts "got 'done' for #{message.id}; decrease num in flight messages"
+    {:noreply, state}
   end
 
 
@@ -64,7 +65,6 @@ defmodule NSQ.Consumer.Connection do
       {:message, data} ->
         message = NSQ.Message.from_data(data)
         NSQ.Message.process(message, socket, state.consumer.config.handler)
-        IO.inspect {"handle message", data}
 
       anything ->
         IO.inspect {"unhandled", anything}
