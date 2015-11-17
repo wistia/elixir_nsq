@@ -7,7 +7,8 @@ defmodule NSQ.Consumer.Connection do
     consumer: nil,
     queue: :queue.new,
     socket: nil,
-    config: nil
+    config: nil,
+    num_in_flight: 0
   }
 
 
@@ -43,9 +44,8 @@ defmodule NSQ.Consumer.Connection do
   end
 
 
-  def handle_call({:done, message}, from, state) do
-    IO.puts "got 'done' for #{message.id}; decrease num in flight messages"
-    {:noreply, state}
+  def handle_call({:message_done, _message}, _from, state) do
+    {:reply, :ack, %{state | num_in_flight: state.num_in_flight - 1}}
   end
 
 
@@ -64,6 +64,7 @@ defmodule NSQ.Consumer.Connection do
 
       {:message, data} ->
         message = NSQ.Message.from_data(data)
+        state = %{state | num_in_flight: state.num_in_flight + 1}
         NSQ.Message.process(message, socket, state.consumer.config.handler)
 
       anything ->

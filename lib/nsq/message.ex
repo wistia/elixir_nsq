@@ -41,7 +41,7 @@ defmodule NSQ.Message do
   def handle_call(:process, from, state) do
     handler_pid = spawn_link(fn -> do_handle_process(state, from) end)
     state = %{state | handler_pid: handler_pid}
-    {:noreply, state}
+    {:reply, handler_pid, state}
   end
 
 
@@ -61,7 +61,7 @@ defmodule NSQ.Message do
   Handler can be either an anonymous function or a module that implements the
   `handle_message\2` function.
   """
-  defp run_handler(handler, message) do
+  def run_handler(handler, message) do
     if is_function(handler) do
       handler.(message.data, message)
     else
@@ -80,8 +80,8 @@ defmodule NSQ.Message do
   end
 
 
-  defp end_processing(message, from) do
-    GenServer.reply(from, {:done, message})
+  defp end_processing(message, {pid, _ref}) do
+    GenServer.call(pid, {:message_done, message})
     Process.exit(self, :normal)
   end
 end

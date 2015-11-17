@@ -7,7 +7,7 @@ defmodule NSQ.ConsumerTest do
   @test_channel2 "__nsq_consumer_test_channel2__"
 
   def new_test_consumer(handler) do
-    consumer = NSQ.Consumer.new(@test_topic, @test_channel1, %{
+    NSQ.Consumer.new(@test_topic, @test_channel1, %{
       nsqds: [{"127.0.0.1", 6750}],
       handler: handler
     })
@@ -27,6 +27,8 @@ defmodule NSQ.ConsumerTest do
       send(test_pid, :handled)
       {:ok}
     end
+
+    %NSQ.Consumer{} = consumer
 
     HTTPotion.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
     assert_receive(:handled)
