@@ -59,8 +59,12 @@ defmodule NSQ.Connection do
 
 
   def handle_call({:rdy, count}, _from, state) do
-    :ok = GenServer.call(self, {:command, {:rdy, count}})
-    {:reply, :ok, %{state | rdy_count: count, last_rdy_count: count}}
+    # TODO: count can come in as a Float for some reason, which messes up
+    # encoding. Enforce it as an integer and remove this hack.
+    count = round(count)
+
+    :ok = :gen_tcp.send(state.socket, encode({:rdy, count}))
+    {:reply, :ok, %{state | rdy_count: count, last_rdy: count}}
   end
 
 
@@ -87,6 +91,12 @@ defmodule NSQ.Connection do
     end
 
     {:noreply, %{state | queue: new_queue}}
+  end
+
+
+  def handle_info({:tcp_closed, socket}, state) do
+    GenServer.call(state.consumer, :connection_closed)
+    {:noreply, state}
   end
 
 
@@ -127,7 +137,7 @@ defmodule NSQ.Connection do
   end
 
 
-  def handle_call({:state, state}, _from, state) do
+  def handle_call(:state, _from, state) do
     {:reply, state, state}
   end
 

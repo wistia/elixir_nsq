@@ -15,44 +15,19 @@ defmodule NSQ.Consumer do
     total_rdy_count: 0,
     rdy_retry_conns: %{},
     need_rdy_redistributed: false,
-    stop_flag: false
+    stop_flag: false,
+    backoff_counter: 0,
+    backoff_duration: 0
   }
 
 
   def start_link(topic, channel, config \\ %{}) do
-    case validate_start_args(topic, channel, config) do
-      :ok ->
-        {:ok, config} = NSQ.Config.new(config)
-        state = %{@initial_state |
-          topic: topic, channel: channel, config: config
-        }
-        GenServer.start_link(__MODULE__, state)
-      {:error, errors} ->
-        {:error, errors}
-    end
-  end
+    {:ok, config} = NSQ.Config.validate(config)
+    unless is_valid_topic_name?(topic), do: raise "Invalid topic name #{topic}"
+    unless is_valid_channel_name?(channel), do: raise "Invalid channel name #{topic}"
 
-
-  def validate_start_args(topic, channel, config) do
-    errors = []
-    case NSQ.Config.new(config) do
-      {:ok, _} -> nil
-      {:error, reason} -> errors = [reason | errors]
-    end
-
-    unless is_valid_topic_name?(topic) do
-      errors = ["Invalid topic name #{topic}" | errors]
-    end
-
-    unless is_valid_channel_name?(channel) do
-      errors = ["Invalid channel name #{channel}" | errors]
-    end
-
-    if length(errors) > 0 do
-      {:error, errors}
-    else
-      :ok
-    end
+    state = %{@initial_state | topic: topic, channel: channel, config: config}
+    GenServer.start_link(__MODULE__, state)
   end
 
 
@@ -60,41 +35,54 @@ defmodule NSQ.Consumer do
   On init, we create a connection for each NSQD instance discovered, and set
   up loops for discovery and RDY redistribution.
   """
-  def init(state) do
-    consumer = self
-    connections = Enum.map state.config.nsqds, fn(nsqd) ->
+  def init(cons_state) do
+    cons = self
+    connections = Enum.map cons_state.config.nsqds, fn(nsqd) ->
       {:ok, conn} = NSQ.Connection.start_link(
-        consumer, nsqd, state.config, state.topic, state.channel
+        cons, nsqd, cons_state.config, cons_state.topic, cons_state.channel
       )
       conn
     end
-    rdy_loop_pid = spawn_link(fn -> rdy_loop(consumer) end)
-    discovery_loop_pid = spawn_link(fn -> discovery_loop(consumer) end)
-    state = %{state |
+    cons_state = %{cons_state | connections: connections}
+
+    rdy_loop_pid = spawn_link(fn -> rdy_loop(cons) end)
+    discovery_loop_pid = spawn_link(fn -> discovery_loop(cons) end)
+    cons_state = %{cons_state |
       rdy_loop_pid: rdy_loop_pid,
       discovery_loop_pid: discovery_loop_pid,
       connections: connections
     }
-    {:ok, %{state | connections: connections}}
+
+    Enum.each connections, fn(conn) ->
+      {:ok, cons_state} = maybe_update_rdy(cons, conn, cons_state)
+    end
+
+    {:ok, cons_state}
   end
 
 
-  def handle_call(:redistribute_rdy, _from, state) do
-    :ok = redistribute_rdy(self, state)
+  def handle_call(:redistribute_rdy, _from, cons_state) do
+    {:ok, cons_state} = redistribute_rdy(self, cons_state)
+    {:reply, :ok, cons_state}
+  end
+
+
+  def handle_call(:connection_closed, conn, cons_state) do
+    conns = List.delete(cons_state.connections, conn)
+    {:reply, :ok, %{cons_state | connections: conns, need_rdy_redistributed: true}}
   end
 
 
   def rdy_loop(cons) do
     cons_state = NSQ.Consumer.get_state(cons)
     GenServer.call(cons, :redistribute_rdy)
-    delay = cons_state.config.rdy_redistribute_interval || 30_000
+    delay = cons_state.config.rdy_redistribute_interval
     :timer.sleep(delay)
     rdy_loop(cons)
   end
 
 
   def discovery_loop(cons, delay \\ 30_000) do
-    IO.puts "discover"
     :timer.sleep(delay)
     discovery_loop(cons, delay)
   end
@@ -141,20 +129,20 @@ defmodule NSQ.Consumer do
       if conn_count == 0 do
         Logger.warn("no connection available to resume")
         Logger.warn("backing off for 1 second")
-        {:ok, cons_state} = backoff(cons, 1000, cons_state)
+        {:ok, _cons_state} = backoff(cons, 1000, cons_state)
       else
         choice = Enum.random(cons_state.connections)
         Logger.warning("(#{choice}) backoff timeout expired, sending RDY 1")
 
         # while in backoff only ever let 1 message at a time through
-        {:ok, cons_state} = update_rdy(cons, choice, 1, cons_state)
+        {:ok, _cons_state} = update_rdy(cons, choice, 1, cons_state)
       end
     end
   end
 
 
   def redistribute_rdy(cons, cons_state \\ nil) do
-    cons_state = NSQ.Consumer.get_state(cons)
+    cons_state = cons_state || NSQ.Consumer.get_state(cons)
 
     if should_redistribute_rdy?(cons_state) do
       conns = cons_state.connections
@@ -175,10 +163,10 @@ defmodule NSQ.Consumer do
         time_since_last_msg = now - conn_state.last_msg_timestamp
         rdy_count = conn_state.rdy_count
 
-        Logger.debug("(#{conn}) rdy: #{rdy_count} (last message received #{inspect datetime_from_timestamp(time_since_last_msg)})")
+        Logger.debug("(#{inspect conn}) rdy: #{rdy_count} (last message received #{inspect datetime_from_timestamp(time_since_last_msg)})")
         if rdy_count > 0 && time_since_last_msg > cons_state.config.low_rdy_idle_timeout do
-          Logger.debug("(#{conn}) idle connection, giving up RDY")
-          update_rdy(cons, conn, 0, cons_state, conn_state)
+          Logger.debug("(#{inspect conn}) idle connection, giving up RDY")
+          {:ok, _cons_state} = update_rdy(cons, conn, 0, cons_state, conn_state)
         end
 
         conn
@@ -189,22 +177,23 @@ defmodule NSQ.Consumer do
         available_max_in_flight = 1 - cons_state.total_rdy_count
       end
 
-      redistribute_rdy_r(cons, possible_conns, available_max_in_flight)
+      redistribute_rdy_r(cons, possible_conns, available_max_in_flight, cons_state)
     else
       # nothing to do
-      :ok
+      {:ok, cons_state}
     end
   end
 
 
   defp redistribute_rdy_r(cons, possible_conns, available_max_in_flight, cons_state \\ nil) do
+    IO.puts "redistribute_rdy_r"
     if length(possible_conns) == 0 || available_max_in_flight <= 0 do
-      :ok
+      {:ok, cons_state}
     else
       cons_state = cons_state || NSQ.Consumer.get_state(cons)
       [conn|rest] = Enum.shuffle(possible_conns)
-      Logger.debug("(#{conn}) redistributing RDY")
-      update_rdy(cons, conn, 1, cons_state)
+      Logger.debug("(#{inspect conn}) redistributing RDY")
+      {:ok, cons_state} = update_rdy(cons, conn, 1, cons_state)
       redistribute_rdy_r(cons, rest, available_max_in_flight - 1, cons_state)
     end
   end
@@ -232,19 +221,21 @@ defmodule NSQ.Consumer do
     in_backoff = cons_state.backoff_counter > 0
     in_backoff_timeout = cons_state.backoff_duration > 0
 
-    if in_backoff > 0 || in_backoff_timeout > 0 do
-      Logger.debug("(#{conn}) skip sending RDY in_backoff:#{in_backoff} || "
+    if in_backoff || in_backoff_timeout do
+      Logger.debug("(#{inspect conn}) skip sending RDY in_backoff:#{in_backoff} || "
         <> "in_backoff_timeout:#{in_backoff_timeout}")
+      {:ok, cons_state}
     else
       remain = conn_state.rdy_count
       last_rdy_count = conn_state.last_rdy
-      count = per_conn_max_in_flight(cons)
+      count = per_conn_max_in_flight(cons, cons_state)
 
       if remain <= 1 || remain < (last_rdy_count / 4) || (count > 0 && count < remain) do
-        Logger.debug("(#{conn}) sending RDY #{count} (#{remain} remain from last RDY #{last_rdy_count})")
-        update_rdy(cons, conn, cons_state, conn_state)
+        Logger.debug("(#{inspect conn}) sending RDY #{count} (#{remain} remain from last RDY #{last_rdy_count})")
+        {:ok, _cons_state} = update_rdy(cons, conn, count, cons_state, conn_state)
+        {:ok, cons_state}
       else
-        Logger.debug("(#{conn}) skip sending RDY #{count} (#{remain} remain out of last RDY #{last_rdy_count})")
+        Logger.debug("(#{inspect conn}) skip sending RDY #{count} (#{remain} remain out of last RDY #{last_rdy_count})")
         {:ok, cons_state}
       end
     end
@@ -252,6 +243,7 @@ defmodule NSQ.Consumer do
 
 
   def update_rdy(cons, conn, count, cons_state \\ nil, conn_state \\ nil) do
+    if cons_state, do: IO.inspect Map.keys(cons_state)
     cons_state = cons_state || NSQ.Consumer.get_state(cons)
     conn_state = conn_state || NSQ.Connection.get_state(conn)
 
@@ -272,6 +264,7 @@ defmodule NSQ.Consumer do
       if rdy_count == 0 do
         # Schedule update_rdy(consumer, conn, count) for this connection again
         # in 5 seconds. This is to prevent eternal starvation.
+        Logger.debug("(#{inspect conn}) retry RDY in 5 seconds")
         retry_rdy(cons, conn, count, cons_state)
       end
       {:error, :over_max_in_flight}

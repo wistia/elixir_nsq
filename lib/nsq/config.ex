@@ -120,27 +120,22 @@ defmodule NSQ.Config do
   defstruct Enum.into(@default_config, [])
 
 
-  def new(overrides \\ %{}) do
-    case validate(Map.merge(%NSQ.Config{}, Enum.into(overrides, %{}))) do
-      {:ok, config} -> {:ok, config}
-      {:error, errors} ->
-        IO.inspect(errors)
-        {:error, errors}
-    end
-  end
+  @doc """
+  Given a config, tell us what's wrong with it. If nothing is wrong, we'll
+  return `{:ok, config}`.
 
+  ## Examples
 
+      iex> NSQ.Config.validate(Map.merge(%NSQ.Config{}, dne: true}))
+      {:error, ["dne: invalid config name"]}
+
+      iex> NSQ.Config.validate(%NSQ.Config{})
+      {:ok, %NSQ.Config{}}
+  """
   def validate(config) do
     errors = []
 
-    {_valid, invalid} = Map.split(config, Map.keys(@default_config))
-    errors = errors ++ Enum.map Map.to_list(invalid), fn({name, _val}) ->
-      if name == :__struct__ do
-        nil
-      else
-        "#{name}: invalid config name"
-      end
-    end
+    %NSQ.Config{} = config
 
     errors = errors ++ Enum.map @valid_ranges, fn({name, {min, max}}) ->
       case range_error(Map.get(config, name), min, max) do
