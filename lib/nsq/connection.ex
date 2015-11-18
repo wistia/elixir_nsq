@@ -14,9 +14,10 @@ defmodule NSQ.Connection do
     channel: nil,
     backoff_counter: 0,
     backoff_duration: 0,
-    rdy: 0,
+    rdy_count: 0,
     last_rdy: 0,
-    max_rdy: 2500
+    max_rdy: 2500,
+    last_msg_timestamp: :calendar.datetime_to_gregorian_seconds(:calendar.universal_time)
   }
 
 
@@ -54,6 +55,12 @@ defmodule NSQ.Connection do
 
   def handle_call({:message_done, _message}, _from, state) do
     {:reply, :ack, %{state | num_in_flight: state.num_in_flight - 1}}
+  end
+
+
+  def handle_call({:rdy, count}, _from, state) do
+    :ok = GenServer.call(self, {:command, {:rdy, count}})
+    {:reply, :ok, %{state | rdy_count: count, last_rdy_count: count}}
   end
 
 
@@ -120,7 +127,22 @@ defmodule NSQ.Connection do
   end
 
 
-  def get_state(consumer, prop) do
-    GenServer.call(consumer, {:state, prop})
+  def handle_call({:state, state}, _from, state) do
+    {:reply, state, state}
+  end
+
+
+  def get_state(conn, prop) do
+    GenServer.call(conn, {:state, prop})
+  end
+
+
+  def get_state(conn) do
+    GenServer.call(conn, :state)
+  end
+
+
+  defp now do
+    :calendar.datetime_to_gregorian_seconds(:calendar.universal_time)
   end
 end
