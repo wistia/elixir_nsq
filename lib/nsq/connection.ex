@@ -1,4 +1,4 @@
-defmodule NSQ.Consumer.Connection do
+defmodule NSQ.Connection do
   import NSQ.Protocol
   use Connection
 
@@ -7,13 +7,21 @@ defmodule NSQ.Consumer.Connection do
     consumer: nil,
     queue: :queue.new,
     socket: nil,
-    config: nil,
-    num_in_flight: 0
+    config: %{},
+    num_in_flight: 0,
+    nsqd: nil,
+    topic: nil,
+    channel: nil,
+    backoff_counter: 0,
+    backoff_duration: 0,
+    rdy: 0,
+    last_rdy: 0,
+    max_rdy: 2500
   }
 
 
-  def start_link(consumer) do
-    state = %{@initial_state | consumer: consumer, config: consumer.config}
+  def start_link(consumer, nsqd, config, topic, channel \\ nil) do
+    state = %{@initial_state | consumer: consumer, nsqd: nsqd, config: config, topic: topic, channel: channel}
     Connection.start_link(__MODULE__, state)
   end
 
@@ -23,12 +31,11 @@ defmodule NSQ.Consumer.Connection do
   end
 
 
-  def connect(_info, %{consumer: consumer, config: config} = state) do
+  def connect(_info, %{nsqd: {host, port}} = state) do
     opts = [:binary, active: false, deliver: :term, packet: :raw]
-    [{host, port}|_t] = config.nsqds
     case :gen_tcp.connect(to_char_list(host), port, opts) do
       {:ok, socket} ->
-        do_handshake(socket, consumer.topic, consumer.channel)
+        do_handshake(socket, state.topic, state.channel)
         {:ok, %{state | socket: socket}}
       {:error, reason} ->
         IO.puts "TCP connection error: #{inspect reason}"
@@ -38,9 +45,10 @@ defmodule NSQ.Consumer.Connection do
 
 
   def handle_call({:command, cmd}, from, %{queue: q} = state) do
+    unless is_binary(cmd), do: cmd = encode(cmd)
     :ok = :gen_tcp.send(state.socket, cmd)
     state = %{state | queue: :queue.in(from, q)}
-    {:noreply, state}
+    {:reply, :ok, state}
   end
 
 
@@ -65,7 +73,7 @@ defmodule NSQ.Consumer.Connection do
       {:message, data} ->
         message = NSQ.Message.from_data(data)
         state = %{state | num_in_flight: state.num_in_flight + 1}
-        NSQ.Message.process(message, socket, state.consumer.config.handler)
+        NSQ.Message.process(message, socket, state.config.handler)
 
       anything ->
         IO.inspect {"unhandled", anything}
@@ -104,5 +112,15 @@ defmodule NSQ.Consumer.Connection do
     :inet.setopts(socket, active: true)
 
     :gen_tcp.send(socket, encode({:rdy, 1}))
+  end
+
+
+  def handle_call({:state, prop}, _from, state) do
+    {:reply, state[prop], state}
+  end
+
+
+  def get_state(consumer, prop) do
+    GenServer.call(consumer, {:state, prop})
   end
 end
