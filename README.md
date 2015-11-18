@@ -1,20 +1,10 @@
-# ElixirNsq
+# elixir_nsq - UNDER CONSTRUCTION
 
-**TODO: Add description**
+The goal of this project is to create a production-ready Elixir client library
+for NSQ. It is currently in a phase of rapid prototyping, and is _not ready_
+for production yet. When that time comes, the readme will reflect it.
 
-## Installation
+See these resources for more info on building client libraries:
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed as:
-
-  1. Add elixir_nsq to your list of dependencies in `mix.exs`:
-
-        def deps do
-          [{:elixir_nsq, "~> 0.0.1"}]
-        end
-
-  2. Ensure elixir_nsq is started before your application:
-
-        def application do
-          [applications: [:elixir_nsq]]
-        end
-
+- [http://nsq.io/clients/building_client_libraries.html](http://nsq.io/clients/building_client_libraries.html)
+- [http://nsq.io/clients/tcp_protocol_spec.html](http://nsq.io/clients/tcp_protocol_spec.html)
