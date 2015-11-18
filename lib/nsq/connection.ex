@@ -80,7 +80,7 @@ defmodule NSQ.Connection do
       {:message, data} ->
         message = NSQ.Message.from_data(data)
         state = %{state | num_in_flight: state.num_in_flight + 1}
-        NSQ.Message.process(message, socket, state.config.handler)
+        NSQ.Message.process(message, socket, state.config.message_handler)
 
       anything ->
         IO.inspect {"unhandled", anything}

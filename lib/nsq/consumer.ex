@@ -1,13 +1,15 @@
 defmodule NSQ.Consumer do
   use GenServer
   require Logger
+  import NSQ.Protocol
 
   @initial_state %{
     channel: nil,
-    config: %{},
+    config: %NSQ.Config{},
     connections: [],
-    max_in_flight: 0,
+    max_in_flight: 2500,
     topic: nil,
+    message_handler: nil,
     rdy_loop_pid: nil,
     discovery_loop_pid: nil,
     total_rdy_count: 0,
@@ -16,10 +18,43 @@ defmodule NSQ.Consumer do
     stop_flag: false
   }
 
-  def start_link(topic, channel, config \\ %{}, opts \\ %{}) do
-    state = %{@initial_state | topic: topic, channel: channel, config: config}
-    GenServer.start_link(__MODULE__, state)
+
+  def start_link(topic, channel, config \\ %{}) do
+    case validate_start_args(topic, channel, config) do
+      :ok ->
+        {:ok, config} = NSQ.Config.new(config)
+        state = %{@initial_state |
+          topic: topic, channel: channel, config: config
+        }
+        GenServer.start_link(__MODULE__, state)
+      {:error, errors} ->
+        {:error, errors}
+    end
   end
+
+
+  def validate_start_args(topic, channel, config) do
+    errors = []
+    case NSQ.Config.new(config) do
+      {:ok, _} -> nil
+      {:error, reason} -> errors = [reason | errors]
+    end
+
+    unless is_valid_topic_name?(topic) do
+      errors = ["Invalid topic name #{topic}" | errors]
+    end
+
+    unless is_valid_channel_name?(channel) do
+      errors = ["Invalid channel name #{channel}" | errors]
+    end
+
+    if length(errors) > 0 do
+      {:error, errors}
+    else
+      :ok
+    end
+  end
+
 
   @doc """
   On init, we create a connection for each NSQD instance discovered, and set

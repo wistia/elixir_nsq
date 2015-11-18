@@ -9,7 +9,7 @@ defmodule NSQ.ConsumerTest do
   def new_test_consumer(handler) do
     NSQ.Consumer.start_link(@test_topic, @test_channel1, %{
       nsqds: [{"127.0.0.1", 6750}],
-      handler: handler
+      message_handler: handler
     })
   end
 
