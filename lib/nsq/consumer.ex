@@ -38,7 +38,7 @@ defmodule NSQ.Consumer do
   def init(cons_state) do
     cons = self
     connections = Enum.map cons_state.config.nsqds, fn(nsqd) ->
-      {:ok, conn} = NSQ.Connection.start_link(
+      {:ok, conn} = NSQ.Connection.start_monitor(
         cons, nsqd, cons_state.config, cons_state.topic, cons_state.channel
       )
       conn
@@ -288,14 +288,14 @@ defmodule NSQ.Consumer do
   end
 
 
-  def send_rdy(cons, conn, count, cons_state \\ nil, conn_state \\ nil) do
+  def send_rdy(cons, {pid, _ref} = conn, count, cons_state \\ nil, conn_state \\ nil) do
     cons_state = cons_state || NSQ.Consumer.get_state(cons)
     conn_state = conn_state || NSQ.Connection.get_state(conn)
 
     if count == 0 && conn_state.last_rdy == 0 do
       {:ok, cons_state}
     else
-      :ok = GenServer.call(conn, {:rdy, count})
+      :ok = GenServer.call(pid, {:rdy, count})
       {:ok, cons_state}
     end
   end

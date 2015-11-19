@@ -21,9 +21,11 @@ defmodule NSQ.Connection do
   }
 
 
-  def start_link(consumer, nsqd, config, topic, channel \\ nil) do
+  def start_monitor(consumer, nsqd, config, topic, channel \\ nil) do
     state = %{@initial_state | consumer: consumer, nsqd: nsqd, config: config, topic: topic, channel: channel}
-    Connection.start_link(__MODULE__, state)
+    {:ok, pid} = Connection.start(__MODULE__, state)
+    ref = Process.monitor(pid)
+    {:ok, {pid, ref}}
   end
 
 
@@ -141,14 +143,13 @@ defmodule NSQ.Connection do
     {:reply, state, state}
   end
 
-
-  def get_state(conn, prop) do
-    GenServer.call(conn, {:state, prop})
+  def get_state({pid, _ref}, prop) do
+    GenServer.call(pid, {:state, prop})
   end
 
 
-  def get_state(conn) do
-    GenServer.call(conn, :state)
+  def get_state({pid, _ref}) do
+    GenServer.call(pid, :state)
   end
 
 
