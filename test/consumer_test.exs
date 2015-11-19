@@ -29,9 +29,9 @@ defmodule NSQ.ConsumerTest do
     end
 
     HTTPotion.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
-    assert_receive(:handled)
+    assert_receive(:handled, 2000)
 
     HTTPotion.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
-    assert_receive(:handled)
+    assert_receive(:handled, 2000)
   end
 end
