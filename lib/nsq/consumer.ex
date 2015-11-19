@@ -305,7 +305,7 @@ defmodule NSQ.Consumer do
     cons_state = cons_state || NSQ.Consumer.get_state(cons)
     max_in_flight = cons_state.max_in_flight
     conn_count = length(cons_state.connections)
-    min(max(1, max_in_flight / conn_count), max_in_flight)
+    min(max(1, max_in_flight / conn_count), max_in_flight) |> round
   end
 
 
