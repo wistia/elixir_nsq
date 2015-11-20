@@ -1,5 +1,5 @@
 defmodule NSQ.MessageTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: false
   # doctest NSQ.Messsage
 
   def now do

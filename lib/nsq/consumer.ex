@@ -73,6 +73,29 @@ defmodule NSQ.Consumer do
   end
 
 
+  @doc """
+  When a monitored process (i.e. one of our nsq connections) crashes, it will
+  send us the DOWN signal. We can demonitor it and clean up here. If using
+  nsqlookupd, a new connection should be naturally respawned via the discovery
+  loop. If not using nsqlookupd, then we can assume backoff reconnects have
+  failed and we should exit with an error.
+  """
+  def handle_info({'DOWN', ref, :process, pid, reason}, cons_state) do
+    if using_nsqlookupd?(cons_state) do
+      conns = List.delete(cons_state.connections, {ref, pid})
+      Process.demonitor(ref)
+      {:reply, %{cons_state | connections: conns, need_rdy_redistributed: true}}
+    else
+      {:stop, "Connection died, unable to reconnect", cons_state}
+    end
+  end
+
+
+  defp using_nsqlookupd?(cons_state) do
+    length(cons_state.config.nsqlookupds) > 0
+  end
+
+
   def rdy_loop(cons) do
     cons_state = NSQ.Consumer.get_state(cons)
     GenServer.call(cons, :redistribute_rdy)
@@ -242,7 +265,6 @@ defmodule NSQ.Consumer do
 
 
   def update_rdy(cons, conn, count, cons_state \\ nil, conn_state \\ nil) do
-    if cons_state, do: IO.inspect Map.keys(cons_state)
     cons_state = cons_state || NSQ.Consumer.get_state(cons)
     conn_state = conn_state || NSQ.Connection.get_state(conn)
 

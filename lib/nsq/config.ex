@@ -10,7 +10,9 @@ defmodule NSQ.Config do
     read_timeout: 1 * @minutes,
     write_timeout: 1 * @seconds,
 
+    # {host, port} tuples identifying where we should look for nsqd/nsqlookupd.
     nsqds: [],
+    nsqlookupds: [],
 
     # Duration between polling lookupd for new producers, and fractional jitter
     # to add to the lookupd pool loop. this helps evenly distribute requests
@@ -20,6 +22,12 @@ defmodule NSQ.Config do
     # duration of time between reconnection attempts
     lookupd_poll_interval: 1 * @minutes,
     lookupd_poll_jitter: 0.3,
+
+    # If nsqlookupd is not being used and a connection to nsqd should fail,
+    # it will automatically attempt to reconnect based on the
+    # lookupd_poll_interval. This is how many times it will make the attempt
+    # before erroring out.
+    max_reconnect_attempts: 30,
 
     # Maximum duration when REQueueing (for doubling of deferred requeue)
     max_requeue_delay: 15 * @minutes,
