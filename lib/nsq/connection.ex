@@ -8,7 +8,7 @@ defmodule NSQ.Connection do
     consumer: nil,
     socket: nil,
     config: %{},
-    num_in_flight: 0,
+    messages_in_flight: 0,
     nsqd: nil,
     topic: nil,
     channel: nil,
@@ -92,7 +92,7 @@ defmodule NSQ.Connection do
 
 
   def handle_call({:message_done, _message}, _from, state) do
-    {:reply, :ack, %{state | num_in_flight: state.num_in_flight - 1}}
+    {:reply, :ack, %{state | messages_in_flight: state.messages_in_flight - 1}}
   end
 
 
@@ -126,7 +126,11 @@ defmodule NSQ.Connection do
       {:message, size, data} ->
         {:ok, data} = recv_rest_of_data(socket, size, data)
         message = NSQ.Message.from_data(data)
-        state = %{state | num_in_flight: state.num_in_flight + 1}
+        state = %{state |
+          rdy_count: state.rdy_count - 1,
+          messages_in_flight: state.messages_in_flight + 1,
+          last_msg_timestamp: now
+        }
         NSQ.Message.process(
           message,
           state.config.message_handler,
@@ -204,5 +208,10 @@ defmodule NSQ.Connection do
     resp_length = byte_size(expected_response)
     :gen_tcp.send(conn.socket, encode(:cls))
     {:ok, expected_response} = :gen_tcp.recv(conn.socket, resp_length)
+  end
+
+
+  defp now do
+    :calendar.datetime_to_gregorian_seconds(:calendar.universal_time)
   end
 end
