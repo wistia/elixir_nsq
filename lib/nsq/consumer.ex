@@ -3,6 +3,7 @@ defmodule NSQ.Consumer do
   require Logger
   import NSQ.Protocol
 
+
   @initial_state %{
     channel: nil,
     config: %NSQ.Config{},
@@ -53,11 +54,20 @@ defmodule NSQ.Consumer do
       connections: connections
     }
 
-    Enum.each connections, fn(conn) ->
-      {:ok, cons_state} = maybe_update_rdy(cons, conn, cons_state)
-    end
+    {:ok, cons_state} = connections_maybe_update_rdy(connections, cons, cons_state)
 
     {:ok, cons_state}
+  end
+
+
+  defp connections_maybe_update_rdy(connections, cons, cons_state) do
+    if connections == [] do
+      {:ok, cons_state}
+    else
+      [conn|rest] = connections
+      {:ok, cons_state} = maybe_update_rdy(cons, conn, cons_state)
+      connections_maybe_update_rdy(rest, cons, cons_state)
+    end
   end
 
 
