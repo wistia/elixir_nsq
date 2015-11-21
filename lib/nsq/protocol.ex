@@ -16,20 +16,22 @@ defmodule NSQ.Protocol do
       {:fin, msg_id} -> "FIN #{msg_id}\n"
       {:req, msg_id, delay} -> "REQ #{msg_id} #{delay}\n"
       {:rdy, count} -> "RDY #{count}\n"
+      {:touch, msg_id} -> "TOUCH #{msg_id}\n"
+      :cls -> "CLS\n"
     end
   end
 
 
   def decode(msg) do
     case msg do
-      <<_frame_size :: size(32), @frame_type_response, data::binary>> ->
-        {:response, data}
-      <<_frame_size :: size(32), @frame_type_error, data::binary>> ->
-        {:error, data}
-      <<_frame_size :: size(32), @frame_type_message, data::binary>> ->
-        {:message, data}
-      <<_frame_size :: size(32), frame_type, data::binary>> ->
-        {:error, "Unknown frame type #{frame_type}", data}
+      <<frame_size :: size(32), @frame_type_response, data::binary>> ->
+        {:response, frame_size, data}
+      <<frame_size :: size(32), @frame_type_error, data::binary>> ->
+        {:error, frame_size, data}
+      <<frame_size :: size(32), @frame_type_message, data::binary>> ->
+        {:message, frame_size, data}
+      <<frame_size :: size(32), frame_type, data::binary>> ->
+        {:error, frame_size, "Unknown frame type #{frame_type}", data}
     end
   end
 
@@ -51,7 +53,12 @@ defmodule NSQ.Protocol do
 
 
   def ok_msg?(msg) do
-    decode(msg) == {:response, "OK"}
+    expected = "OK"
+    expected_length = String.length(expected)
+    case decode(msg) do
+      {:response, expected_length, expected} -> true
+      _else -> false
+    end
   end
 
 

@@ -108,16 +108,19 @@ defmodule NSQ.Connection do
 
   def handle_info({:tcp, socket, msg}, state) do
     case decode(msg) do
-      {:response, "_heartbeat_"} ->
+      {:response, _size, "_heartbeat_"} ->
         :gen_tcp.send(socket, "nop\n")
 
-      {:response, data} ->
+      {:response, size, data} ->
+        {:ok, data} = recv_rest_of_data(socket, size, data)
         IO.inspect {"handle response", data}
 
-      {:error, data} ->
+      {:error, size, data} ->
+        {:ok, data} = recv_rest_of_data(socket, size, data)
         IO.inspect {"handle error", data}
 
-      {:message, data} ->
+      {:message, size, data} ->
+        {:ok, data} = recv_rest_of_data(socket, size, data)
         message = NSQ.Message.from_data(data)
         state = %{state | num_in_flight: state.num_in_flight + 1}
         NSQ.Message.process(message, socket, state.config.message_handler)
@@ -127,6 +130,19 @@ defmodule NSQ.Connection do
     end
 
     {:noreply, state}
+  end
+
+
+  @initial_size_and_frame_type_size 8
+  def recv_rest_of_data(socket, total_expected_size, data) do
+    data_length = String.length(data)
+    if data_length >= total_expected_size - @initial_size_and_frame_type_size do
+      {:ok, data}
+    else
+      IO.puts "Getting more data #{data_length} vs. #{@init}"
+      {:ok, more_data} = :gen_tcp.recv(socket, 0)
+      recv_rest_of_data(socket, total_expected_size, data <> more_data)
+    end
   end
 
 
@@ -144,7 +160,7 @@ defmodule NSQ.Connection do
 
     Logger.debug "(#{inspect self}) wait for subscription acknowledgment"
     {:ok, ack} = :gen_tcp.recv(socket, 0)
-    unless ok_msg?(ack), do: raise "expected ok, got #{ack}"
+    unless ok_msg?(ack), do: raise "expected OK, got #{inspect ack}"
 
     # set mode to active: true so we receive tcp messages as erlang messages.
     :inet.setopts(socket, active: true)
