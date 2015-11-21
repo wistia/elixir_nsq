@@ -1,6 +1,6 @@
 defmodule NSQ.MessageTest do
   use ExUnit.Case, async: false
-  # doctest NSQ.Messsage
+  doctest NSQ.Message
 
   def now do
     :calendar.datetime_to_gregorian_seconds(:calendar.universal_time)

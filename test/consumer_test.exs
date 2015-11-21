@@ -1,6 +1,6 @@
 defmodule NSQ.ConsumerTest do
   use ExUnit.Case, async: false
-  # doctest NSQ.Consumer
+  doctest NSQ.Consumer
 
   @test_topic "__nsq_consumer_test_topic__"
   @test_channel1 "__nsq_consumer_test_channel1__"
