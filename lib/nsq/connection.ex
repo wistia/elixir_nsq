@@ -106,6 +106,10 @@ defmodule NSQ.Connection do
   end
 
 
+  # First 4 bytes are int32 representing size of message in bytes.
+  # Second 4 bytes are the frame type.
+  @packet_header_size 8
+
   def handle_info({:tcp, socket, msg}, state) do
     case decode(msg) do
       {:response, _size, "_heartbeat_"} ->
@@ -139,14 +143,13 @@ defmodule NSQ.Connection do
 
 
   @initial_size_and_frame_type_size 8
-  def recv_rest_of_data(socket, total_expected_size, data) do
-    data_length = String.length(data)
-    if data_length >= total_expected_size - @initial_size_and_frame_type_size do
-      {:ok, data}
+  def recv_rest_of_data(socket, total_msg_size, data_acc) do
+    total_data_size = total_msg_size - @packet_header_size
+    if byte_size(data_acc) < total_data_size do
+      {:ok, more_data} = :gen_tcp.recv(socket, total_data_size)
+      {:ok, data_acc <> more_data}
     else
-      IO.puts "Getting more data #{data_length} vs. #{@init}"
-      {:ok, more_data} = :gen_tcp.recv(socket, 0)
-      recv_rest_of_data(socket, total_expected_size, data <> more_data)
+      {:ok, data_acc}
     end
   end
 
@@ -198,7 +201,7 @@ defmodule NSQ.Connection do
 
   def close(conn) do
     expected_response = "CLOSE_WAIT"
-    resp_length = String.length(expected_response)
+    resp_length = byte_size(expected_response)
     :gen_tcp.send(conn.socket, encode(:cls))
     {:ok, expected_response} = :gen_tcp.recv(conn.socket, resp_length)
   end
