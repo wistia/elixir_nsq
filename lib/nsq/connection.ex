@@ -194,4 +194,12 @@ defmodule NSQ.Connection do
   def get_state({pid, _ref}) do
     GenServer.call(pid, :state)
   end
+
+
+  def close(conn) do
+    expected_response = "CLOSE_WAIT"
+    resp_length = String.length(expected_response)
+    :gen_tcp.send(conn.socket, encode(:cls))
+    {:ok, expected_response} = :gen_tcp.recv(conn.socket, resp_length)
+  end
 end
