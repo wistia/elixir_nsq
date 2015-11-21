@@ -134,11 +134,11 @@ defmodule NSQ.Config do
 
   ## Examples
 
-      iex> NSQ.Config.validate(Map.merge(%NSQ.Config{}, dne: true}))
-      {:error, ["dne: invalid config name"]}
-
       iex> NSQ.Config.validate(%NSQ.Config{})
       {:ok, %NSQ.Config{}}
+
+      iex> NSQ.Config.validate(%NSQ.Config{max_attempts: -1})
+      {:error, ["max_attempts: -1 below minimum 0"]}
   """
   def validate(config) do
     errors = []
