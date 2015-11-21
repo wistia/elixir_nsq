@@ -123,7 +123,12 @@ defmodule NSQ.Connection do
         {:ok, data} = recv_rest_of_data(socket, size, data)
         message = NSQ.Message.from_data(data)
         state = %{state | num_in_flight: state.num_in_flight + 1}
-        NSQ.Message.process(message, socket, state.config.message_handler)
+        NSQ.Message.process(
+          message,
+          state.config.message_handler,
+          state.config.max_attempts,
+          socket
+        )
 
       anything ->
         IO.inspect {"unhandled", anything}

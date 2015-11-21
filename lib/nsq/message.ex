@@ -4,10 +4,10 @@ defmodule NSQ.Message do
   require Logger
 
 
-  defstruct [:id, :timestamp, :attempts, :data]
+  defstruct [:id, :timestamp, :attempts, :data, :socket, max_attempts: 0]
 
 
-  @initial_state %{message: nil, socket: nil, handler: nil, handler_pid: nil}
+  @initial_state %{message: nil, handler: nil, handler_pid: nil}
 
 
   def from_data(data) do
@@ -16,16 +16,18 @@ defmodule NSQ.Message do
   end
 
 
-  def process(message, socket, handler) do
-    {:ok, pid} = start_link(message, socket, handler)
+  def process(message, handler, max_attempts, socket) do
+    message = %{message | max_attempts: max_attempts, socket: socket}
+    {:ok, pid} = start(message, handler)
+    ref = Process.monitor(pid)
     GenServer.call(pid, :process)
-    pid
+    {pid, ref}
   end
 
 
-  def start_link(message, socket, handler) do
-    state = %{@initial_state | socket: socket, message: message, handler: handler}
-    GenServer.start_link(__MODULE__, state)
+  def start(message, handler) do
+    state = %{@initial_state | message: message, handler: handler}
+    GenServer.start(__MODULE__, state)
   end
 
 
@@ -46,14 +48,35 @@ defmodule NSQ.Message do
 
 
   defp do_handle_process(%{message: message, handler: handler} = state, from) do
-    case run_handler(handler, message) do
-      {:ok} ->
-        fin(state.socket, message)
-        end_processing(message, from)
-      {:req, delay} ->
-        req(state.socket, message)
-        end_processing(message, from)
+    if should_fail_message?(message) do
+      log_failed_message(message)
+      fin(message)
+      end_processing(message, from)
+    else
+      result = try do
+        run_handler(handler, message)
+      catch
+        any -> {:req, -1}
+      end
+
+      case result do
+        {:ok} -> fin(message)
+        {:req, delay} -> req(message)
+      end
+
+      end_processing(message, from)
     end
+  end
+
+
+  defp should_fail_message?(message) do
+    message.max_attempts > 0 && message.attempts > message.max_attempts
+  end
+
+
+  defp log_failed_message(message) do
+    Logger.warning("msg #{message.id} attempted #{message.attempts} times, giving up")
+    # TODO: Custom error logging/handling?
   end
 
 
@@ -70,13 +93,19 @@ defmodule NSQ.Message do
   end
 
 
-  def fin(socket, message) do
-    :gen_tcp.send(socket, encode({:fin, message.id}))
+  def fin(message) do
+    :gen_tcp.send(message.socket, encode({:fin, message.id}))
   end
 
 
-  def req(socket, message, delay \\ 1000) do
-    :gen_tcp.send(socket, encode({:req, message.id, delay}))
+  def req(message, delay \\ -1, backoff \\ false) do
+    :gen_tcp.send(message.socket, encode({:req, message.id, delay}))
+  end
+
+
+  def touch(message) do
+    Logger.debug("(#{message.connection}) touch msg ID #{message.id}")
+    :gen_tcp.send(message.socket, encode({:touch, message.id}))
   end
 
 
