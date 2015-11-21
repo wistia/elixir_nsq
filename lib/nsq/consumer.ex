@@ -83,6 +83,16 @@ defmodule NSQ.Consumer do
   end
 
 
+  def handle_call({:state, prop}, _from, state) do
+    {:reply, state[prop], state}
+  end
+
+
+  def handle_call(:state, _from, state) do
+    {:reply, state, state}
+  end
+
+
   @doc """
   When a monitored process (i.e. one of our nsq connections) crashes, it will
   send us the DOWN signal. We can demonitor it and clean up here. If using
@@ -118,16 +128,6 @@ defmodule NSQ.Consumer do
   def discovery_loop(cons, delay \\ 30_000) do
     :timer.sleep(delay)
     discovery_loop(cons, delay)
-  end
-
-
-  def handle_call({:state, prop}, _from, state) do
-    {:reply, state[prop], state}
-  end
-
-
-  def handle_call(:state, _from, state) do
-    {:reply, state, state}
   end
 
 
@@ -218,12 +218,11 @@ defmodule NSQ.Consumer do
   end
 
 
-  defp redistribute_rdy_r(cons, possible_conns, available_max_in_flight, cons_state \\ nil) do
-    IO.puts "redistribute_rdy_r"
+  defp redistribute_rdy_r(cons, possible_conns, available_max_in_flight, cons_state) do
+    cons_state = cons_state || NSQ.Consumer.get_state(cons)
     if length(possible_conns) == 0 || available_max_in_flight <= 0 do
       {:ok, cons_state}
     else
-      cons_state = cons_state || NSQ.Consumer.get_state(cons)
       [conn|rest] = Enum.shuffle(possible_conns)
       Logger.debug("(#{inspect conn}) redistributing RDY")
       {:ok, cons_state} = update_rdy(cons, conn, 1, cons_state)
