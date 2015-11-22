@@ -38,6 +38,10 @@ defmodule NSQ.Consumer do
   up loops for discovery and RDY redistribution.
   """
   def init(cons_state) do
+    # We need this so we can clean up connections when a consumer is
+    # terminated.
+    Process.flag(:trap_exit, true)
+
     cons = self
     connections = Enum.map cons_state.config.nsqds, fn(nsqd) ->
       {:ok, conn} = NSQ.Connection.start_monitor(
@@ -61,14 +65,14 @@ defmodule NSQ.Consumer do
   end
 
 
-  defp connections_maybe_update_rdy(connections, cons, cons_state) do
-    if connections == [] do
-      {:ok, cons_state}
-    else
-      [conn|rest] = connections
-      {:ok, cons_state} = maybe_update_rdy(cons, conn, cons_state)
-      connections_maybe_update_rdy(rest, cons, cons_state)
+  def terminate(reason, state) do
+    IO.puts "Consumer Got terminate #{reason}; #{inspect state}"
+    if state.connections do
+      Enum.each state.connections, fn({pid, _ref}) ->
+        GenServer.call(pid, :stop)
+      end
     end
+    :ok
   end
 
 
@@ -101,7 +105,7 @@ defmodule NSQ.Consumer do
   loop. If not using nsqlookupd, then we can assume backoff reconnects have
   failed and we should exit with an error.
   """
-  def handle_info({'DOWN', ref, :process, pid, reason}, cons_state) do
+  def handle_info({:DOWN, ref, :process, pid, reason}, cons_state) do
     if using_nsqlookupd?(cons_state) do
       conns = List.delete(cons_state.connections, {ref, pid})
       Process.demonitor(ref)
