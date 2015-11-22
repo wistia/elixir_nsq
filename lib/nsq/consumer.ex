@@ -251,6 +251,17 @@ defmodule NSQ.Consumer do
   end
 
 
+  defp connections_maybe_update_rdy(connections, cons, cons_state) do
+    if connections == [] do
+      {:ok, cons_state}
+    else
+      [conn|rest] = connections
+      {:ok, cons_state} = maybe_update_rdy(cons, conn, cons_state)
+      connections_maybe_update_rdy(rest, cons, cons_state)
+    end
+  end
+
+
   def maybe_update_rdy(cons, conn, cons_state \\ nil, conn_state \\ nil) do
     cons_state = cons_state || NSQ.Consumer.get_state(cons)
     conn_state = conn_state || NSQ.Connection.get_state(conn)
