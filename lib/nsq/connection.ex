@@ -81,7 +81,7 @@ defmodule NSQ.Connection do
 
   defp reconnect_delay(state) do
     interval = state.config.lookupd_poll_interval
-    jitter = round(interval * state.config.lookupd_poll_jitter)
+    jitter = round(interval * state.config.lookupd_poll_jitter * :random.uniform)
     interval + jitter
   end
 
