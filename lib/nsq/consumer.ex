@@ -65,11 +65,10 @@ defmodule NSQ.Consumer do
   end
 
 
-  def terminate(reason, state) do
-    IO.puts "Consumer Got terminate #{reason}; #{inspect state}"
+  def terminate(:shutdown, state) do
     if state.connections do
       Enum.each state.connections, fn({pid, _ref}) ->
-        GenServer.call(pid, :stop)
+        Process.exit(pid, :kill)
       end
     end
     :ok
