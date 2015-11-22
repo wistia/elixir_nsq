@@ -81,6 +81,12 @@ defmodule NSQ.Consumer do
   end
 
 
+  def handle_call({:update_rdy, conn, count}, _from, cons_state) do
+    {:ok, cons_state} = update_rdy(self, conn, count, cons_state)
+    {:reply, :ok, cons_state}
+  end
+
+
   def handle_call(:connection_closed, conn, cons_state) do
     conns = List.delete(cons_state.connections, conn)
     {:reply, :ok, %{cons_state | connections: conns, need_rdy_redistributed: true}}
@@ -294,7 +300,13 @@ defmodule NSQ.Consumer do
 
     if count > conn_state.max_rdy, do: count = conn_state.max_rdy
 
-    # TODO: Understand RDY retry timers and do something with them here?
+    # If this is for a connection that's retrying, kill the timer and clean up.
+    if retry_pid = cons_state.rdy_retry_conns[conn] do
+      Process.exit(retry_pid, :kill)
+      cons_state = %{cons_state |
+        rdy_retry_conns: Map.delete(cons_state.rdy_retry_conns, conn)
+      }
+    end
 
     rdy_count = conn_state.rdy_count
     max_in_flight = cons_state.max_in_flight
@@ -324,9 +336,9 @@ defmodule NSQ.Consumer do
   def retry_rdy(cons, conn, count, cons_state \\ nil) do
     cons_state = cons_state || NSQ.Consumer.get_state(cons)
 
-    retry_pid = spawn_link fn ->
+    retry_pid = spawn fn ->
       :timer.sleep(5000)
-      update_rdy(cons, conn, count)
+      GenServer.call(cons, {:update_rdy, conn, count})
     end
     rdy_retry_conns = Map.put(cons_state.rdy_retry_conns, conn, retry_pid)
 
