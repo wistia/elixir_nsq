@@ -72,4 +72,22 @@ defmodule NSQ.ConsumerTest do
     })
     refute_receive({:EXIT, _pid, {:connect_failed, _last_call}}, 2000)
   end
+
+
+  test "receives messages from mpub" do
+    test_pid = self
+    NSQ.Consumer.start_link(@test_topic, @test_channel1, %NSQ.Config{
+      nsqds: [{"127.0.0.1", 6750}],
+      message_handler: fn(body, msg) ->
+        assert body == "mpubtest"
+        send(test_pid, :handled)
+        {:ok}
+      end
+    })
+
+    HTTPotion.post("http://127.0.0.1:6751/mpub?topic=#{@test_topic}", [body: "mpubtest\nmpubtest\nmpubtest"])
+    assert_receive(:handled, 2000)
+    assert_receive(:handled, 2000)
+    assert_receive(:handled, 2000)
+  end
 end

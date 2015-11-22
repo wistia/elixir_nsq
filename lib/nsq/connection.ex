@@ -106,55 +106,45 @@ defmodule NSQ.Connection do
   end
 
 
-  # First 4 bytes are int32 representing size of message in bytes.
-  # Second 4 bytes are the frame type.
-  @packet_header_size 8
-
-  def handle_info({:tcp, socket, msg}, state) do
-    case decode(msg) do
-      {:response, _size, "_heartbeat_"} ->
-        :gen_tcp.send(socket, "nop\n")
-
-      {:response, size, data} ->
-        {:ok, data} = recv_rest_of_data(socket, size, data)
-        IO.inspect {"handle response", data}
-
-      {:error, size, data} ->
-        {:ok, data} = recv_rest_of_data(socket, size, data)
-        IO.inspect {"handle error", data}
-
-      {:message, size, data} ->
-        {:ok, data} = recv_rest_of_data(socket, size, data)
-        message = NSQ.Message.from_data(data)
-        state = %{state |
-          rdy_count: state.rdy_count - 1,
-          messages_in_flight: state.messages_in_flight + 1,
-          last_msg_timestamp: now
-        }
-        NSQ.Message.process(
-          message,
-          state.config.message_handler,
-          state.config.max_attempts,
-          socket
-        )
-
-      anything ->
-        IO.inspect {"unhandled", anything}
-    end
-
-    {:noreply, state}
+  def handle_call(:stop, _from, state) do
+    IO.puts "Connection #{inspect self} got STOP"
+    {:stop, :normal, state}
   end
 
 
-  @initial_size_and_frame_type_size 8
-  def recv_rest_of_data(socket, total_msg_size, data_acc) do
-    total_data_size = total_msg_size - @packet_header_size
-    if byte_size(data_acc) < total_data_size do
-      {:ok, more_data} = :gen_tcp.recv(socket, total_data_size)
-      {:ok, data_acc <> more_data}
-    else
-      {:ok, data_acc}
+  def handle_info({:tcp, socket, raw_data}, state) do
+    raw_messages = messages_from_data(raw_data)
+    Enum.each raw_messages, fn(raw_message) ->
+      case decode(raw_message) do
+        {:response, "_heartbeat_"} ->
+          :gen_tcp.send(socket, "nop\n")
+
+        {:response, data} ->
+          IO.inspect {"handle response", data}
+
+        {:error, data} ->
+          IO.inspect {"handle error", data}
+
+        {:message, data} ->
+          message = NSQ.Message.from_data(data)
+          state = %{state |
+            rdy_count: state.rdy_count - 1,
+            messages_in_flight: state.messages_in_flight + 1,
+            last_msg_timestamp: now
+          }
+          NSQ.Message.process(
+            message,
+            state.config.message_handler,
+            state.config.max_attempts,
+            socket
+          )
+
+        anything ->
+          IO.inspect {"unhandled", anything}
+      end
     end
+
+    {:noreply, state}
   end
 
 
