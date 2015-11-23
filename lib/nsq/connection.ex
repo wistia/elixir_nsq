@@ -106,6 +106,11 @@ defmodule NSQ.Connection do
   end
 
 
+  def handle_call(:stop, _from, state) do
+    {:stop, :normal, state}
+  end
+
+
   def handle_info({:tcp, socket, raw_data}, state) do
     raw_messages = messages_from_data(raw_data)
     Enum.each raw_messages, fn(raw_message) ->
