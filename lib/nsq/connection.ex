@@ -91,8 +91,9 @@ defmodule NSQ.Connection do
   end
 
 
-  def handle_call({:pub, data}, _from, state) do
-    :gen_tcp.send(state.socket, encode({:pub, state.topic, data}))
+  def handle_call({:pub, topic, data}, _from, state) do
+    :gen_tcp.send(state.socket, encode({:pub, topic, data}))
+    {:reply, :ok, state}
   end
 
 
@@ -116,11 +117,6 @@ defmodule NSQ.Connection do
   end
 
 
-  def handle_call({:state, prop}, _from, state) do
-    {:reply, state[prop], state}
-  end
-
-
   def handle_call(:state, _from, state) do
     {:reply, state, state}
   end
@@ -134,10 +130,10 @@ defmodule NSQ.Connection do
           :gen_tcp.send(socket, "nop\n")
 
         {:response, data} ->
-          IO.inspect {"handle response", data}
+          Logger.debug "response #{inspect data}"
 
         {:error, data} ->
-          IO.inspect {"handle error", data}
+          Logger.error "error #{inspect data}"
 
         {:message, data} ->
           message = NSQ.Message.from_data(data)
