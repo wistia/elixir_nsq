@@ -80,9 +80,7 @@ defmodule NSQ.Consumer do
 
   def handle_call(:discover_nsqds, _from, cons_state) do
     if length(cons_state.config.nsqlookupds) > 0 do
-      {:ok, cons_state} = discover_nsqds_and_connect(
-        cons_state.config.nsqlookupds, self, cons_state
-      )
+      {:ok, cons_state} = discover_nsqds_and_connect(self, cons_state)
       {:reply, :ok, cons_state}
     else
       # No nsqlookupds are configured. They must be specifying nsqds directly.
@@ -91,14 +89,45 @@ defmodule NSQ.Consumer do
   end
 
 
+  def handle_call(:connection_closed, conn, cons_state) do
+    conns = Enum.reject(cons_state.connections, fn(_nsqd, c) -> c == conn end)
+    {:reply, :ok, %{cons_state | connections: conns, need_rdy_redistributed: true}}
+  end
+
+
+  def handle_call({:state, prop}, _from, state) do
+    {:reply, state[prop], state}
+  end
+
+
+  def handle_call(:state, _from, state) do
+    {:reply, state, state}
+  end
+
+
+  @doc """
+  When a monitored process (i.e. one of our nsq connections) crashes, it will
+  send us the DOWN signal. We can demonitor it and clean up here. If using
+  nsqlookupd, a new connection should be naturally respawned via the discovery
+  loop. If not using nsqlookupd, then we can assume backoff reconnects have
+  failed and we should exit with an error.
+  """
+  def handle_info({:DOWN, ref, :process, pid, _reason}, cons_state) do
+    if using_nsqlookupd?(cons_state) do
+      conns = List.delete(cons_state.connections, {ref, pid})
+      Process.demonitor(ref)
+      {:reply, %{cons_state | connections: conns, need_rdy_redistributed: true}}
+    else
+      {:stop, "Connection died, unable to reconnect", cons_state}
+    end
+  end
+
+
   def connect_to_nsqds_on_init(cons, cons_state \\ nil) do
     cons_state = cons_state || NSQ.Consumer.get_state(cons)
 
-    IO.puts "connect_to_nsqds_on_init"
     if length(cons_state.config.nsqlookupds) > 0 do
-      {:ok, _cons_state} = discover_nsqds_and_connect(
-        cons_state.config.nsqlookupds, cons, cons_state
-      )
+      {:ok, _cons_state} = discover_nsqds_and_connect(cons, cons_state)
     else
       {:ok, _cons_state} = update_connections(
         cons_state.config.nsqds, cons, cons_state
@@ -107,7 +136,7 @@ defmodule NSQ.Consumer do
   end
 
 
-  def discover_nsqds_and_connect(nsqlookupds, cons, cons_state \\ nil) do
+  def discover_nsqds_and_connect(cons, cons_state \\ nil) do
     cons_state = cons_state || NSQ.Consumer.get_state(cons)
 
     if length(cons_state.config.nsqlookupds) > 0 do
@@ -193,40 +222,6 @@ defmodule NSQ.Consumer do
     cons_state = cons_state || NSQ.Consumer.get_state(cons)
     Enum.reject discovered_nsqds, fn(disc_nsqd) ->
       Enum.find(cons_state.connections, fn({nsqd, _}) -> nsqd == disc_nsqd end)
-    end
-  end
-
-
-  def handle_call(:connection_closed, conn, cons_state) do
-    conns = Enum.reject(cons_state.connections, fn(_nsqd, c) -> c == conn end)
-    {:reply, :ok, %{cons_state | connections: conns, need_rdy_redistributed: true}}
-  end
-
-
-  def handle_call({:state, prop}, _from, state) do
-    {:reply, state[prop], state}
-  end
-
-
-  def handle_call(:state, _from, state) do
-    {:reply, state, state}
-  end
-
-
-  @doc """
-  When a monitored process (i.e. one of our nsq connections) crashes, it will
-  send us the DOWN signal. We can demonitor it and clean up here. If using
-  nsqlookupd, a new connection should be naturally respawned via the discovery
-  loop. If not using nsqlookupd, then we can assume backoff reconnects have
-  failed and we should exit with an error.
-  """
-  def handle_info({:DOWN, ref, :process, pid, reason}, cons_state) do
-    if using_nsqlookupd?(cons_state) do
-      conns = List.delete(cons_state.connections, {ref, pid})
-      Process.demonitor(ref)
-      {:reply, %{cons_state | connections: conns, need_rdy_redistributed: true}}
-    else
-      {:stop, "Connection died, unable to reconnect", cons_state}
     end
   end
 
