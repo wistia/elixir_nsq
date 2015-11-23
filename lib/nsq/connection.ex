@@ -127,7 +127,7 @@ defmodule NSQ.Connection do
     Enum.each raw_messages, fn(raw_message) ->
       case decode(raw_message) do
         {:response, "_heartbeat_"} ->
-          :gen_tcp.send(socket, "nop\n")
+          :gen_tcp.send(socket, encode(:noop))
 
         {:response, data} ->
           Logger.debug "response #{inspect data}"
