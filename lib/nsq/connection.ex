@@ -158,7 +158,7 @@ defmodule NSQ.Connection do
   end
 
 
-  def handle_info({:tcp_closed, socket}, state) do
+  def handle_info({:tcp_closed, _socket}, state) do
     {:connect, :tcp_closed, %{state | reconnect_attempts: state.reconnect_attempts + 1}}
   end
 
@@ -177,7 +177,7 @@ defmodule NSQ.Connection do
     expected_response = "CLOSE_WAIT"
     resp_length = byte_size(expected_response)
     :gen_tcp.send(conn.socket, encode(:cls))
-    {:ok, expected_response} = :gen_tcp.recv(conn.socket, resp_length)
+    {:ok, _} = :gen_tcp.recv(conn.socket, resp_length)
   end
 
 
