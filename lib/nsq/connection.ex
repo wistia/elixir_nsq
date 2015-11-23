@@ -152,27 +152,6 @@ defmodule NSQ.Connection do
   end
 
 
-  defp do_handshake(socket, topic, channel, state) do
-    Logger.debug("(#{inspect self}) connecting...")
-    :ok = :gen_tcp.send(socket, encode(:magic_v2))
-
-    Logger.debug "(#{inspect self}) subscribe to #{topic} #{channel}"
-    :gen_tcp.send(socket, encode({:sub, topic, channel}))
-
-    Logger.debug "(#{inspect self}) wait for subscription acknowledgment"
-    {:ok, ack} = :gen_tcp.recv(socket, 0)
-    unless ok_msg?(ack), do: raise "expected OK, got #{inspect ack}"
-
-    # set mode to active: true so we receive tcp messages as erlang messages.
-    :inet.setopts(socket, active: true)
-
-    Logger.debug("(#{inspect self}) connected, set rdy 1")
-    :gen_tcp.send(socket, encode({:rdy, 1}))
-
-    {:ok, %{state | rdy_count: 1, last_rdy: 1}}
-  end
-
-
   def handle_call({:state, prop}, _from, state) do
     {:reply, state[prop], state}
   end
@@ -202,5 +181,26 @@ defmodule NSQ.Connection do
 
   defp now do
     :calendar.datetime_to_gregorian_seconds(:calendar.universal_time)
+  end
+
+
+  defp do_handshake(socket, topic, channel, state) do
+    Logger.debug("(#{inspect self}) connecting...")
+    :ok = :gen_tcp.send(socket, encode(:magic_v2))
+
+    Logger.debug "(#{inspect self}) subscribe to #{topic} #{channel}"
+    :gen_tcp.send(socket, encode({:sub, topic, channel}))
+
+    Logger.debug "(#{inspect self}) wait for subscription acknowledgment"
+    {:ok, ack} = :gen_tcp.recv(socket, 0)
+    unless ok_msg?(ack), do: raise "expected OK, got #{inspect ack}"
+
+    # set mode to active: true so we receive tcp messages as erlang messages.
+    :inet.setopts(socket, active: true)
+
+    Logger.debug("(#{inspect self}) connected, set rdy 1")
+    :gen_tcp.send(socket, encode({:rdy, 1}))
+
+    {:ok, %{state | rdy_count: 1, last_rdy: 1}}
   end
 end
