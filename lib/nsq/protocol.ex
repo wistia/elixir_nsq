@@ -11,7 +11,9 @@ defmodule NSQ.Protocol do
       :noop -> "NOP\n"
       {:identify, options} ->
         json = Poison.encode!(options)
-        <<"IDENTIFY\n", String.length(json) :: size(32), json>>
+        "IDENTIFY\n" <> <<byte_size(json) :: size(32)>> <> json
+      {:pub, topic, data} ->
+        "PUB #{topic}\n" <> << byte_size(data) :: size(32) >> <> data
       {:sub, topic, channel} -> "SUB #{topic} #{channel}\n"
       {:fin, msg_id} -> "FIN #{msg_id}\n"
       {:req, msg_id, delay} -> "REQ #{msg_id} #{delay}\n"

@@ -94,6 +94,7 @@ defmodule NSQ.Consumer do
   def connect_to_nsqds_on_init(cons, cons_state \\ nil) do
     cons_state = cons_state || NSQ.Consumer.get_state(cons)
 
+    IO.puts "connect_to_nsqds_on_init"
     if length(cons_state.config.nsqlookupds) > 0 do
       {:ok, _cons_state} = discover_nsqds_and_connect(
         cons_state.config.nsqlookupds, cons, cons_state
@@ -110,9 +111,10 @@ defmodule NSQ.Consumer do
     cons_state = cons_state || NSQ.Consumer.get_state(cons)
 
     if length(cons_state.config.nsqlookupds) > 0 do
-      nsqds = nsqds_from_lookupds(
+      nsqds = NSQ.Connection.nsqds_from_lookupds(
         cons_state.config.nsqlookupds, cons_state.topic
       )
+      IO.puts "Discovered nsqds: #{inspect nsqds}"
       {:ok, cons_state} = update_connections(nsqds, cons, cons_state)
     else
       {:error, "No nsqlookupds given"}
@@ -229,53 +231,6 @@ defmodule NSQ.Consumer do
   end
 
 
-  def nsqds_from_lookupds(lookupds, topic) do
-    responses = Enum.map(lookupds, &query_lookupd(&1, topic))
-    nsqds = Enum.map responses, fn(response) ->
-      Enum.map response["producers"], fn(producer) ->
-        if producer do
-          {producer["broadcast_address"], producer["tcp_port"]}
-        else
-          nil
-        end
-      end
-    end
-    nsqds |>
-      List.flatten |>
-      Enum.uniq |>
-      Enum.reject(fn(v) -> v == nil end)
-  end
-
-
-  def query_lookupd({host, port}, topic) do
-    lookupd_url = "http://#{host}:#{port}/lookup?topic=#{topic}"
-    headers = [{"Accept", "application/vnd.nsq; version=1.0"}]
-    try do
-      case HTTPotion.get(lookupd_url, headers: headers) do
-        %HTTPotion.Response{status_code: 200, body: body, headers: headers} ->
-          if body == nil || body == "" do
-            body = "{}"
-          end
-
-          if headers[:"X-Nsq-Content-Type"] == "nsq; version=1.0" do
-            Poison.decode!(body)
-          else
-            %{status_code: 200, status_txt: "OK", data: body}
-          end
-        %HTTPotion.Response{status_code: status, body: body} ->
-          Logger.error "Unexpected status code from #{lookupd_url}: #{status}"
-          %{status_code: status, status_txt: nil, data: body}
-      end
-    rescue
-      e in HTTPotion.HTTPError ->
-        Logger.error "Error connecting to #{lookupd_url}: #{inspect e}"
-        %{status_code: nil, status_txt: nil, data: nil}
-    end
-  end
-
-
-
-
   defp using_nsqlookupd?(cons_state) do
     length(cons_state.config.nsqlookupds) > 0
   end
@@ -292,13 +247,14 @@ defmodule NSQ.Consumer do
 
   def discovery_loop(cons) do
     cons_state = NSQ.Consumer.get_state(cons)
-    GenServer.call(cons, :discover_nsqds)
     %NSQ.Config{
       lookupd_poll_interval: poll_interval,
       lookupd_poll_jitter: poll_jitter
     } = cons_state.config
     delay = poll_interval + round(poll_interval * poll_jitter * :random.uniform)
     :timer.sleep(delay)
+
+    GenServer.call(cons, :discover_nsqds)
     discovery_loop(cons)
   end
 

@@ -1,7 +1,11 @@
 defmodule NSQ.Config do
+  alias ElixirNsq.Mixfile
+
+
   @ms 1
   @seconds 1000 * @ms
   @minutes 60 * @seconds
+
 
   @default_config %{
     dial_timeout: 1000,
@@ -64,7 +68,7 @@ defmodule NSQ.Config do
     heartbeat_interval: 30 * @seconds,
 
     # Integer percentage 0-99 to sample the channel (requires nsqd 0.2.25+)
-    sample_rate: nil,
+    sample_rate: 0,
 
     # To set TLS config, use the following options:
 	  #
@@ -97,7 +101,7 @@ defmodule NSQ.Config do
     max_in_flight: 1,
 
     # The server-side message timeout for messages delivered to this client
-    msg_timeout: nil,
+    msg_timeout: 60 * @seconds,
 
     # secret for nsqd authentication (requires nsqd 0.2.29+)
     auth_secret: nil,

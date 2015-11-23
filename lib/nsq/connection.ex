@@ -5,7 +5,7 @@ defmodule NSQ.Connection do
 
 
   @initial_state %{
-    consumer: nil,
+    parent: nil,
     socket: nil,
     config: %{},
     messages_in_flight: 0,
@@ -22,8 +22,8 @@ defmodule NSQ.Connection do
   }
 
 
-  def start_monitor(consumer, nsqd, config, topic, channel \\ nil) do
-    state = %{@initial_state | consumer: consumer, nsqd: nsqd, config: config, topic: topic, channel: channel}
+  def start_monitor(parent, nsqd, config, topic, channel \\ nil) do
+    state = %{@initial_state | parent: parent, nsqd: nsqd, config: config, topic: topic, channel: channel}
     {:ok, pid} = Connection.start(__MODULE__, state)
     ref = Process.monitor(pid)
     {:ok, {pid, ref}}
@@ -40,7 +40,7 @@ defmodule NSQ.Connection do
       opts = [:binary, active: false, deliver: :term, packet: :raw]
       case :gen_tcp.connect(to_char_list(host), port, opts) do
         {:ok, socket} ->
-          {:ok, state} = do_handshake(socket, state.topic, state.channel, state)
+          {:ok, state} = do_handshake(self, %{state | socket: socket})
           {:ok, %{state | socket: socket, reconnect_attempts: 0}}
         {:error, reason} ->
           if using_nsqlookupd?(state) do
@@ -91,6 +91,11 @@ defmodule NSQ.Connection do
   end
 
 
+  def handle_call({:pub, data}, _from, state) do
+    :gen_tcp.send(state.socket, encode({:pub, state.topic, data}))
+  end
+
+
   def handle_call({:message_done, _message}, _from, state) do
     {:reply, :ack, %{state | messages_in_flight: state.messages_in_flight - 1}}
   end
@@ -108,6 +113,16 @@ defmodule NSQ.Connection do
 
   def handle_call(:stop, _from, state) do
     {:stop, :normal, state}
+  end
+
+
+  def handle_call({:state, prop}, _from, state) do
+    {:reply, state[prop], state}
+  end
+
+
+  def handle_call(:state, _from, state) do
+    {:reply, state, state}
   end
 
 
@@ -152,16 +167,6 @@ defmodule NSQ.Connection do
   end
 
 
-  def handle_call({:state, prop}, _from, state) do
-    {:reply, state[prop], state}
-  end
-
-
-  def handle_call(:state, _from, state) do
-    {:reply, state, state}
-  end
-
-
   def get_state({_nsqd, {pid, _ref}}) do
     GenServer.call(pid, :state)
   end
@@ -180,28 +185,106 @@ defmodule NSQ.Connection do
   end
 
 
+  def nsqds_from_lookupds(lookupds, topic) do
+    responses = Enum.map(lookupds, &query_lookupd(&1, topic))
+    nsqds = Enum.map responses, fn(response) ->
+      Enum.map response["producers"] || [], fn(producer) ->
+        if producer do
+          {producer["broadcast_address"], producer["tcp_port"]}
+        else
+          nil
+        end
+      end
+    end
+    nsqds |>
+      List.flatten |>
+      Enum.uniq |>
+      Enum.reject(fn(v) -> v == nil end)
+  end
+
+
+  def query_lookupd({host, port}, topic) do
+    lookupd_url = "http://#{host}:#{port}/lookup?topic=#{topic}"
+    headers = [{"Accept", "application/vnd.nsq; version=1.0"}]
+    try do
+      case HTTPotion.get(lookupd_url, headers: headers) do
+        %HTTPotion.Response{status_code: 200, body: body, headers: headers} ->
+          if body == nil || body == "" do
+            body = "{}"
+          end
+
+          if headers[:"X-Nsq-Content-Type"] == "nsq; version=1.0" do
+            Poison.decode!(body)
+          else
+            %{status_code: 200, status_txt: "OK", data: body}
+          end
+        %HTTPotion.Response{status_code: status, body: body} ->
+          Logger.error "Unexpected status code from #{lookupd_url}: #{status}"
+          %{status_code: status, status_txt: nil, data: body}
+      end
+    rescue
+      e in HTTPotion.HTTPError ->
+        Logger.error "Error connecting to #{lookupd_url}: #{inspect e}"
+        %{status_code: nil, status_txt: nil, data: nil}
+    end
+  end
+
+
   defp now do
     :calendar.datetime_to_gregorian_seconds(:calendar.universal_time)
   end
 
 
-  defp do_handshake(socket, topic, channel, state) do
+  def do_handshake(conn, conn_state \\ nil) do
+    conn_state = conn_state || NSQ.Connection.get_state(conn)
+    %{socket: socket, topic: topic, channel: channel} = conn_state
+
     Logger.debug("(#{inspect self}) connecting...")
     :ok = :gen_tcp.send(socket, encode(:magic_v2))
 
-    Logger.debug "(#{inspect self}) subscribe to #{topic} #{channel}"
-    :gen_tcp.send(socket, encode({:sub, topic, channel}))
+    Logger.debug("(#{inspect self}) identifying...")
+    identify_obj = encode({:identify, identify_props(conn_state)})
+    :ok = :gen_tcp.send(socket, identify_obj)
+    {:ok, _resp} = :gen_tcp.recv(socket, 0)
 
-    Logger.debug "(#{inspect self}) wait for subscription acknowledgment"
-    {:ok, ack} = :gen_tcp.recv(socket, 0)
-    unless ok_msg?(ack), do: raise "expected OK, got #{inspect ack}"
+    if channel do
+      Logger.debug "(#{inspect self}) subscribe to #{topic} #{channel}"
+      :gen_tcp.send(socket, encode({:sub, topic, channel}))
+
+      Logger.debug "(#{inspect self}) wait for subscription acknowledgment"
+      {:ok, ack} = :gen_tcp.recv(socket, 0)
+      unless ok_msg?(ack), do: raise "expected OK, got #{inspect ack}"
+
+      Logger.debug("(#{inspect self}) connected, set rdy 1")
+      :gen_tcp.send(socket, encode({:rdy, 1}))
+
+      conn_state = %{conn_state | rdy_count: 1, last_rdy: 1}
+    end
 
     # set mode to active: true so we receive tcp messages as erlang messages.
     :inet.setopts(socket, active: true)
+    {:ok, conn_state}
+  end
 
-    Logger.debug("(#{inspect self}) connected, set rdy 1")
-    :gen_tcp.send(socket, encode({:rdy, 1}))
 
-    {:ok, %{state | rdy_count: 1, last_rdy: 1}}
+  @project ElixirNsq.Mixfile.project
+  @user_agent "#{@project[:app]}/#{@project[:version]}"
+
+
+  def identify_props(%{nsqd: {host, port}, config: config} = conn_state) do
+    %{
+      client_id: "#{host}:#{port} (#{inspect conn_state.parent})",
+      hostname: to_string(:net_adm.localhost),
+      feature_negotiation: true,
+      heartbeat_interval: config.heartbeat_interval,
+      output_buffer: config.output_buffer_size,
+      output_buffer_timeout: config.output_buffer_timeout,
+      tls_v1: false,
+      snappy: false,
+      deflate: false,
+      sample_rate: 0,
+      user_agent: config.user_agent || @user_agent,
+      msg_timeout: config.msg_timeout
+    }
   end
 end
