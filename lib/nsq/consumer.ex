@@ -43,23 +43,14 @@ defmodule NSQ.Consumer do
     Process.flag(:trap_exit, true)
 
     cons = self
-    connections = Enum.map cons_state.config.nsqds, fn(nsqd) ->
-      {:ok, conn} = NSQ.Connection.start_monitor(
-        cons, nsqd, cons_state.config, cons_state.topic, cons_state.channel
-      )
-      conn
-    end
-    cons_state = %{cons_state | connections: connections}
+    {:ok, cons_state} = connect_to_nsqds_on_init(cons, cons_state)
 
     rdy_loop_pid = spawn_link(fn -> rdy_loop(cons) end)
     discovery_loop_pid = spawn_link(fn -> discovery_loop(cons) end)
     cons_state = %{cons_state |
       rdy_loop_pid: rdy_loop_pid,
-      discovery_loop_pid: discovery_loop_pid,
-      connections: connections
+      discovery_loop_pid: discovery_loop_pid
     }
-
-    {:ok, cons_state} = connections_maybe_update_rdy(connections, cons, cons_state)
 
     {:ok, cons_state}
   end
@@ -67,7 +58,7 @@ defmodule NSQ.Consumer do
 
   def terminate(:shutdown, state) do
     if state.connections do
-      Enum.each state.connections, fn({pid, _ref}) ->
+      Enum.each state.connections, fn({_nsqd, {pid, _ref}}) ->
         Process.exit(pid, :kill)
       end
     end
@@ -87,8 +78,125 @@ defmodule NSQ.Consumer do
   end
 
 
+  def handle_call(:discover_nsqds, _from, cons_state) do
+    if length(cons_state.config.nsqlookupds) > 0 do
+      {:ok, cons_state} = discover_nsqds_and_connect(
+        cons_state.config.nsqlookupds, self, cons_state
+      )
+      {:reply, :ok, cons_state}
+    else
+      # No nsqlookupds are configured. They must be specifying nsqds directly.
+      {:reply, :ok, cons_state}
+    end
+  end
+
+
+  def connect_to_nsqds_on_init(cons, cons_state \\ nil) do
+    cons_state = cons_state || NSQ.Consumer.get_state(cons)
+
+    if length(cons_state.config.nsqlookupds) > 0 do
+      {:ok, _cons_state} = discover_nsqds_and_connect(
+        cons_state.config.nsqlookupds, cons, cons_state
+      )
+    else
+      {:ok, _cons_state} = update_connections(
+        cons_state.config.nsqds, cons, cons_state
+      )
+    end
+  end
+
+
+  def discover_nsqds_and_connect(nsqlookupds, cons, cons_state \\ nil) do
+    cons_state = cons_state || NSQ.Consumer.get_state(cons)
+
+    if length(cons_state.config.nsqlookupds) > 0 do
+      nsqds = nsqds_from_lookupds(
+        cons_state.config.nsqlookupds, cons_state.topic
+      )
+      {:ok, cons_state} = update_connections(nsqds, cons, cons_state)
+    else
+      {:error, "No nsqlookupds given"}
+    end
+  end
+
+
+  def update_connections(discovered_nsqds, cons, cons_state \\ nil) do
+    cons_state = cons_state || NSQ.Consumer.get_state(cons)
+
+    dead_conns = dead_connections(discovered_nsqds, cons, cons_state)
+    {:ok, cons_state} = stop_connections(dead_conns, cons, cons_state)
+
+    nsqds_to_connect = new_nsqds(discovered_nsqds, cons, cons_state)
+    {:ok, cons_state} = connect_to_nsqds(nsqds_to_connect, cons, cons_state)
+
+    {:ok, cons_state} = connections_maybe_update_rdy(
+      cons_state.connections, cons, cons_state
+    )
+
+    {:ok, cons_state}
+  end
+
+
+  def connect_to_nsqds(nsqds, cons, cons_state \\ nil) do
+    cons_state = cons_state || NSQ.Consumer.get_state(cons)
+
+    new_conns = Enum.map nsqds, fn(nsqd) ->
+      {:ok, conn} = NSQ.Connection.start_monitor(
+        cons, nsqd, cons_state.config, cons_state.topic, cons_state.channel
+      )
+      {nsqd, conn}
+    end
+    {:ok, %{cons_state | connections: cons_state.connections ++ new_conns}}
+  end
+
+
+  @doc """
+  Given a list of connections, force them to stop. Return the new state without
+  those connections.
+  """
+  def stop_connections(connections, cons, cons_state \\ nil) do
+    cons_state = cons_state || NSQ.Consumer.get_state(cons)
+
+    Enum.map connections, fn(_nsqd, {pid, _from}) ->
+      GenServer.call(pid, :stop)
+    end
+
+    alive_conns = Enum.reject cons_state.connections, fn(conn) ->
+      Enum.find(connections, conn)
+    end
+
+    {:ok, %{cons_state | connections: alive_conns}}
+  end
+
+
+  @doc """
+  We may have open connections and nsqlookupd stops reporting them. This
+  function tells us which connections we have stored in state but not in
+  nsqlookupd.
+  """
+  def dead_connections(discovered_nsqds, cons, cons_state \\ nil) do
+    cons_state = cons_state || NSQ.Consumer.get_state(cons)
+    Enum.reject cons_state.connections, fn(nsqd, _) ->
+      Enum.find(discovered_nsqds, nsqd)
+    end
+  end
+
+
+  @doc """
+  When nsqlookupd reports available producers, there are some that may not
+  already be in our connection list. This function reports which ones are new
+  so we can connect to them.
+  """
+  def new_nsqds(discovered_nsqds, cons, cons_state \\ nil) do
+    cons_state = cons_state || NSQ.Consumer.get_state(cons)
+    Enum.reject discovered_nsqds, fn(disc_nsqd) ->
+      Enum.find(cons_state.connections, fn({nsqd, _}) -> nsqd == disc_nsqd end)
+    end
+  end
+
+
   def handle_call(:connection_closed, conn, cons_state) do
-    conns = List.delete(cons_state.connections, conn)
+    conns = Enum.reject(cons_state.connections, fn(_nsqd, c) -> c == conn end)
     {:reply, :ok, %{cons_state | connections: conns, need_rdy_redistributed: true}}
   end
 
@@ -121,6 +229,53 @@ defmodule NSQ.Consumer do
   end
 
 
+  def nsqds_from_lookupds(lookupds, topic) do
+    responses = Enum.map(lookupds, &query_lookupd(&1, topic))
+    nsqds = Enum.map responses, fn(response) ->
+      Enum.map response["producers"], fn(producer) ->
+        if producer do
+          {producer["broadcast_address"], producer["tcp_port"]}
+        else
+          nil
+        end
+      end
+    end
+    nsqds |>
+      List.flatten |>
+      Enum.uniq |>
+      Enum.reject(fn(v) -> v == nil end)
+  end
+
+
+  def query_lookupd({host, port}, topic) do
+    lookupd_url = "http://#{host}:#{port}/lookup?topic=#{topic}"
+    headers = [{"Accept", "application/vnd.nsq; version=1.0"}]
+    try do
+      case HTTPotion.get(lookupd_url, headers: headers) do
+        %HTTPotion.Response{status_code: 200, body: body, headers: headers} ->
+          if body == nil || body == "" do
+            body = "{}"
+          end
+
+          if headers[:"X-Nsq-Content-Type"] == "nsq; version=1.0" do
+            Poison.decode!(body)
+          else
+            %{status_code: 200, status_txt: "OK", data: body}
+          end
+        %HTTPotion.Response{status_code: status, body: body} ->
+          Logger.error "Unexpected status code from #{lookupd_url}: #{status}"
+          %{status_code: status, status_txt: nil, data: body}
+      end
+    rescue
+      e in HTTPotion.HTTPError ->
+        Logger.error "Error connecting to #{lookupd_url}: #{inspect e}"
+        %{status_code: nil, status_txt: nil, data: nil}
+    end
+  end
+
+
+
+
   defp using_nsqlookupd?(cons_state) do
     length(cons_state.config.nsqlookupds) > 0
   end
@@ -135,9 +290,16 @@ defmodule NSQ.Consumer do
   end
 
 
-  def discovery_loop(cons, delay \\ 30_000) do
+  def discovery_loop(cons) do
+    cons_state = NSQ.Consumer.get_state(cons)
+    GenServer.call(cons, :discover_nsqds)
+    %NSQ.Config{
+      lookupd_poll_interval: poll_interval,
+      lookupd_poll_jitter: poll_jitter
+    } = cons_state.config
+    delay = poll_interval + round(poll_interval * poll_jitter * :random.uniform)
     :timer.sleep(delay)
-    discovery_loop(cons, delay)
+    discovery_loop(cons)
   end
 
 
@@ -302,6 +464,7 @@ defmodule NSQ.Consumer do
 
     # If this is for a connection that's retrying, kill the timer and clean up.
     if retry_pid = cons_state.rdy_retry_conns[conn] do
+      Logger.debug("#{inspect conn} rdy retry pid #{inspect retry_pid} detected, killing")
       Process.exit(retry_pid, :kill)
       cons_state = %{cons_state |
         rdy_retry_conns: Map.delete(cons_state.rdy_retry_conns, conn)
@@ -346,7 +509,7 @@ defmodule NSQ.Consumer do
   end
 
 
-  def send_rdy(cons, {pid, _ref} = conn, count, cons_state \\ nil, conn_state \\ nil) do
+  def send_rdy(cons, {_nsqd, {pid, _ref}} = conn, count, cons_state \\ nil, conn_state \\ nil) do
     cons_state = cons_state || NSQ.Consumer.get_state(cons)
     conn_state = conn_state || NSQ.Connection.get_state(conn)
 

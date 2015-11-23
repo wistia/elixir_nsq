@@ -161,8 +161,9 @@ defmodule NSQ.Connection do
     {:reply, state, state}
   end
 
-  def get_state({pid, _ref}, prop) do
-    GenServer.call(pid, {:state, prop})
+
+  def get_state({_nsqd, {pid, _ref}}) do
+    GenServer.call(pid, :state)
   end
 
 
