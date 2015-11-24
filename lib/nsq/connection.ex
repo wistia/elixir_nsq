@@ -259,7 +259,8 @@ defmodule NSQ.Connection do
       :gen_tcp.send(socket, encode({:sub, topic, channel}))
 
       Logger.debug "(#{inspect self}) wait for subscription acknowledgment"
-      {:ok, ok_msg} = :gen_tcp.recv(socket, 0)
+      expected = ok_msg
+      {:ok, ^expected} = :gen_tcp.recv(socket, 0)
 
       Logger.debug("(#{inspect self}) connected, set rdy 1")
       :gen_tcp.send(socket, encode({:rdy, 1}))
