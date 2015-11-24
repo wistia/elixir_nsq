@@ -2,10 +2,9 @@ defmodule NSQ.ProducerTest do
   use ExUnit.Case, async: true
   doctest NSQ.Producer
 
-
   @test_topic "__nsq_producer_test_topic__"
   @test_channel1 "__nsq_producer_test_channel1__"
-
+  @configured_nsqds [{"127.0.0.1", 6750}, {"127.0.0.1", 6760}]
 
   setup do
     Logger.configure(level: :warn)
@@ -14,13 +13,9 @@ defmodule NSQ.ProducerTest do
     :ok
   end
 
-
   test "#start_link starts a new producer, discoverable via nsqlookupd" do
-    configured_nsqds = [{"127.0.0.1", 6750}, {"127.0.0.1", 6760}]
     {:ok, producer} = NSQ.Producer.start_link(
-      configured_nsqds,
-      "__nsq_producer_test_topic__",
-      %NSQ.Config{nsqds: configured_nsqds}
+      %NSQ.Config{nsqds: @configured_nsqds}, @test_topic
     )
 
     # Produce a ton of messages so we're "guaranteed" both our nsqds have
@@ -31,24 +26,20 @@ defmodule NSQ.ProducerTest do
     discovered_nsqds = NSQ.Connection.nsqds_from_lookupds(lookupds, "__nsq_producer_test_topic__")
 
     # Sort the arrays so we can compare them.
-    configured_nsqds = Enum.sort_by(configured_nsqds, &inspect(&1))
+    configured_nsqds = Enum.sort_by(@configured_nsqds, &inspect(&1))
     discovered_nsqds = Enum.sort_by(discovered_nsqds, &inspect(&1))
 
     assert configured_nsqds == discovered_nsqds
   end
 
-
   test "messages added via pub are handled by a consumer" do
-    configured_nsqds = [{"127.0.0.1", 6750}, {"127.0.0.1", 6760}]
     {:ok, producer} = NSQ.Producer.start_link(
-      configured_nsqds,
-      "__nsq_producer_test_topic__",
-      %NSQ.Config{nsqds: configured_nsqds}
+      %NSQ.Config{nsqds: @configured_nsqds}, @test_topic
     )
 
     test_pid = self
     NSQ.Consumer.start_link(@test_topic, @test_channel1, %NSQ.Config{
-      nsqds: configured_nsqds,
+      nsqds: @configured_nsqds,
       message_handler: fn(body, msg) ->
         assert body == "test abc"
         assert msg.attempts == 1

@@ -11,7 +11,7 @@ defmodule NSQ.Producer do
   }
 
 
-  def start_link(nsqds, topic, config \\ nil) do
+  def start_link(config, topic) do
     {:ok, config} = NSQ.Config.validate(config || %NSQ.Config{})
     unless is_valid_topic_name?(topic), do: raise "Invalid topic name #{topic}"
     state = %{@initial_state | topic: topic, config: config}
