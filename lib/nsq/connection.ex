@@ -1,8 +1,18 @@
 defmodule NSQ.Connection do
+  @moduledoc """
+  Implements a TCP connection to NSQD. Both consumers and producers use this.
+  """
+
+  # ------------------------------------------------------- #
+  # Directives                                              #
+  # ------------------------------------------------------- #
   require Logger
   use Connection
   import NSQ.Protocol
 
+  # ------------------------------------------------------- #
+  # Module Attributes                                       #
+  # ------------------------------------------------------- #
   @project ElixirNsq.Mixfile.project
   @user_agent "#{@project[:app]}/#{@project[:version]}"
   @initial_state %{
@@ -23,6 +33,9 @@ defmodule NSQ.Connection do
     stop_flag: false
   }
 
+  # ------------------------------------------------------- #
+  # Behaviour Overrides                                     #
+  # ------------------------------------------------------- #
   def start_monitor(parent, nsqd, config, topic, channel \\ nil) do
     state = %{@initial_state |
       parent: parent,
@@ -68,7 +81,6 @@ defmodule NSQ.Connection do
     end
   end
 
-
   def disconnect(info, %{socket: socket} = state) do
     :ok = :gen_tcp.close(socket)
     case info do
@@ -83,17 +95,14 @@ defmodule NSQ.Connection do
     {:connect, :reconnect, %{state | reconnect_attempts: state.reconnect_attempts + 1, socket: nil}}
   end
 
-
   def handle_call({:pub, topic, data}, _from, state) do
     :gen_tcp.send(state.socket, encode({:pub, topic, data}))
     {:reply, :ok, state}
   end
 
-
   def handle_call({:message_done, _message}, _from, state) do
     {:reply, :ack, %{state | messages_in_flight: state.messages_in_flight - 1}}
   end
-
 
   def handle_call({:rdy, count}, _from, state) do
     if state.socket do
@@ -104,16 +113,13 @@ defmodule NSQ.Connection do
     end
   end
 
-
   def handle_call(:stop, _from, state) do
     {:stop, :normal, state}
   end
 
-
   def handle_call(:state, _from, state) do
     {:reply, state, state}
   end
-
 
   def handle_info({:tcp, socket, raw_data}, state) do
     raw_messages = messages_from_data(raw_data)
@@ -150,16 +156,16 @@ defmodule NSQ.Connection do
     {:noreply, state}
   end
 
-
   def handle_info({:tcp_closed, _socket}, state) do
     {:connect, :tcp_closed, %{state | reconnect_attempts: state.reconnect_attempts + 1}}
   end
 
-
+  # ------------------------------------------------------- #
+  # API Definitions                                         #
+  # ------------------------------------------------------- #
   def get_state({_nsqd, {pid, _ref}}) do
     GenServer.call(pid, :state)
   end
-
 
   def close(conn, conn_state \\ nil) do
     conn_state = conn_state || NSQ.Connection.get_state(conn)
@@ -167,7 +173,6 @@ defmodule NSQ.Connection do
     {:ok, "CLOSE_WAIT"} = :gen_tcp.recv(conn.socket, 0)
     {:ok, conn_state}
   end
-
 
   def nsqds_from_lookupds(lookupds, topic) do
     responses = Enum.map(lookupds, &query_lookupd(&1, topic))
@@ -185,7 +190,6 @@ defmodule NSQ.Connection do
       Enum.uniq |>
       Enum.reject(fn(v) -> v == nil end)
   end
-
 
   def query_lookupd({host, port}, topic) do
     lookupd_url = "http://#{host}:#{port}/lookup?topic=#{topic}"
@@ -245,7 +249,9 @@ defmodule NSQ.Connection do
     {:ok, conn_state}
   end
 
-
+  # ------------------------------------------------------- #
+  # Private Functions                                       #
+  # ------------------------------------------------------- #
   defp identify_props(%{nsqd: {host, port}, config: config} = conn_state) do
     %{
       client_id: "#{host}:#{port} (#{inspect conn_state.parent})",
@@ -263,18 +269,15 @@ defmodule NSQ.Connection do
     }
   end
 
-
   defp reconnect_delay(conn_state) do
     interval = conn_state.config.lookupd_poll_interval
     jitter = round(interval * conn_state.config.lookupd_poll_jitter * :random.uniform)
     interval + jitter
   end
 
-
   defp using_nsqlookupd?(state) do
     length(state.config.nsqlookupds) > 0
   end
-
 
   defp now do
     :calendar.datetime_to_gregorian_seconds(:calendar.universal_time)
