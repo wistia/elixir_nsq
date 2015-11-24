@@ -41,21 +41,8 @@ defmodule NSQ.Connection do
   }
 
   # ------------------------------------------------------- #
-  # Behaviour Overrides                                     #
+  # Behaviour Implementation                                #
   # ------------------------------------------------------- #
-  def start_monitor(parent, nsqd, config, topic, channel \\ nil) do
-    state = %{@initial_state |
-      parent: parent,
-      nsqd: nsqd,
-      config: config,
-      topic: topic,
-      channel: channel
-    }
-    {:ok, pid} = Connection.start(__MODULE__, state)
-    ref = Process.monitor(pid)
-    {:ok, {pid, ref}}
-  end
-
   def init(state) do
     {:connect, nil, state}
   end
@@ -126,13 +113,14 @@ defmodule NSQ.Connection do
   end
 
   def handle_call({:message_done, _message}, _from, state) do
-    {:reply, :ok, %{state | messages_in_flight: state.messages_in_flight - 1}}
+    state = state |> increment_rdy_count |> decrement_messages_in_flight
+    {:reply, :ok, state}
   end
 
   def handle_call({:rdy, count}, _from, state) do
     if state.socket do
       :ok = :gen_tcp.send(state.socket, encode({:rdy, count}))
-      {:reply, :ok, %{state | rdy_count: count, last_rdy: count}}
+      {:reply, :ok, update_rdy_count(state, count)}
     else
       {:reply, {:error, :no_socket}, state}
     end
@@ -182,12 +170,25 @@ defmodule NSQ.Connection do
   end
 
   def handle_info({:tcp_closed, _socket}, state) do
-    {:connect, :tcp_closed, %{state | reconnect_attempts: state.reconnect_attempts + 1}}
+    {:connect, :tcp_closed, increment_reconnects(state)}
   end
 
   # ------------------------------------------------------- #
   # API Definitions                                         #
   # ------------------------------------------------------- #
+  def start_monitor(parent, nsqd, config, topic, channel \\ nil) do
+    state = %{@initial_state |
+      parent: parent,
+      nsqd: nsqd,
+      config: config,
+      topic: topic,
+      channel: channel
+    }
+    {:ok, pid} = Connection.start(__MODULE__, state)
+    ref = Process.monitor(pid)
+    {:ok, {pid, ref}}
+  end
+
   def get_state({_nsqd, {pid, _ref}}) do
     GenServer.call(pid, :state)
   end
@@ -318,8 +319,16 @@ defmodule NSQ.Connection do
     %{state | rdy_count: state.rdy_count + 1}
   end
 
+  defp decrement_messages_in_flight(state) do
+    %{state | messages_in_flight: state.messages_in_flight - 1}
+  end
+
   defp initial_rdy_count(state) do
     %{state | rdy_count: 1, last_rdy: 1}
+  end
+
+  defp update_rdy_count(state, rdy_count) do
+    %{state | rdy_count: rdy_count, last_rdy: rdy_count}
   end
 
   defp should_attempt_connection?(state) do
