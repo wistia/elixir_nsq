@@ -15,6 +15,7 @@ defmodule NSQ.Connection do
   # ------------------------------------------------------- #
   @project ElixirNsq.Mixfile.project
   @user_agent "#{@project[:app]}/#{@project[:version]}"
+  @socket_opts [:binary, active: false, deliver: :term, packet: :raw]
   @initial_state %{
     parent: nil,
     socket: nil,
@@ -54,24 +55,20 @@ defmodule NSQ.Connection do
   end
 
   def connect(_info, %{nsqd: {host, port}} = state) do
-    if state.reconnect_attempts == 0 || state.reconnect_attempts < state.config.max_reconnect_attempts do
-      opts = [:binary, active: false, deliver: :term, packet: :raw]
-      case :gen_tcp.connect(to_char_list(host), port, opts) do
+    if should_attempt_connection?(state) do
+      case :gen_tcp.connect(to_char_list(host), port, @socket_opts) do
         {:ok, socket} ->
-          {:ok, state} = do_handshake(self, %{state | socket: socket})
-          {:ok, %{state | socket: socket, reconnect_attempts: 0}}
+          state = %{state | socket: socket}
+          {:ok, state} = do_handshake(self, state)
+          {:ok, reset_reconnects(state)}
         {:error, reason} ->
           if using_nsqlookupd?(state) do
-            Logger.debug("(#{inspect self}) connect failed, give up; discovery loop should respawn")
-            {:stop, reason, state}
+            log_connect_failed_and_stop({reason, "discovery loop should respawn"}, state)
           else
             if state.config.max_reconnect_attempts > 0 do
-              delay = reconnect_delay(state)
-              Logger.debug("(#{inspect self}) connect failed, try again in #{delay / 1000}s")
-              {:backoff, delay, %{state | reconnect_attempts: state.reconnect_attempts + 1}}
+              log_connect_failed_and_reconnect(state)
             else
-              Logger.debug("(#{inspect self}) connect failed, reconnect turned off")
-              {:stop, reason, state}
+              log_connect_failed_and_stop({reason, "reconnect turned off"}, state)
             end
           end
       end
@@ -81,6 +78,9 @@ defmodule NSQ.Connection do
     end
   end
 
+  @doc """
+  This is code that runs _on disconnect_, not code _to disconnect_.
+  """
   def disconnect(info, %{socket: socket} = state) do
     :ok = :gen_tcp.close(socket)
     case info do
@@ -281,5 +281,27 @@ defmodule NSQ.Connection do
 
   defp now do
     :calendar.datetime_to_gregorian_seconds(:calendar.universal_time)
+  end
+
+  defp reset_reconnects(state), do: %{state | reconnect_attempts: 0}
+
+  defp increment_reconnects(state) do
+    %{state | reconnect_attempts: state.reconnect_attempts + 1}
+  end
+
+  defp should_attempt_connection?(state) do
+    state.reconnect_attempts == 0 ||
+      state.reconnect_attempts < state.config.max_reconnect_attempts
+  end
+
+  defp log_connect_failed_and_stop({reason, note}, state) do
+    Logger.debug("(#{inspect self}) connect failed; #{reason}; #{note}")
+    {:stop, reason, state}
+  end
+
+  defp log_connect_failed_and_reconnect(state) do
+    delay = reconnect_delay(state)
+    Logger.debug("(#{inspect self}) connect failed, try again in #{delay / 1000}s")
+    {:backoff, delay, increment_reconnects(state)}
   end
 end
