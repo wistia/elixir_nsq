@@ -352,13 +352,21 @@ defmodule NSQ.Connection do
 
   # Use this whenever we need to have an immediate response to a socket send.
   defp wait_for_recv(socket, body, fun) do
+    # active: false means we will only receive tcp messages via :gen_tcp.recv
+    # synchronously, not as erlang messages.
     :inet.setopts(socket, active: false)
+
     fun.()
-    expected = response_msg(body)
-    {:ok, resp} = :gen_tcp.recv(socket, byte_size(expected))
-    unless resp == expected do
-      raise "Unexpected response" <> String.chunk(resp, :printable)
-    end
+    {:ok, resp} = :gen_tcp.recv(socket, 0)
+
+    # If body is not specified, then we don't do any validation. It's assumed
+    # that more complex validation will be done elsewhere.
+    if body, do: ^resp = response_msg(body)
+
+    # active: false means we will receive tcp messages as erlang messages
+    # asynchronously, to be handle via handle_info.
     :inet.setopts(socket, active: true)
+
+    {:ok, resp}
   end
 end
