@@ -1,5 +1,5 @@
 defmodule NSQ.ProducerTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
   doctest NSQ.Producer
 
 

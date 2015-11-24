@@ -1,5 +1,5 @@
 defmodule NSQ.ConsumerTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
   doctest NSQ.Consumer
 
   @test_topic "__nsq_consumer_test_topic__"
