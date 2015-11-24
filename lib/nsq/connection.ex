@@ -1,6 +1,12 @@
 defmodule NSQ.Connection do
   @moduledoc """
-  Implements a TCP connection to NSQD. Both consumers and producers use this.
+  Sets up a TCP connection to NSQD. Both consumers and producers use this.
+
+  This implements the Connection behaviour, which lets us reconnect or backoff
+  under certain conditions. For more info, check out the module:
+  https://github.com/fishcakez/connection. The module docs are especially
+  helpful:
+  https://github.com/fishcakez/connection/blob/master/lib/connection.ex.
   """
 
   # ------------------------------------------------------- #
@@ -54,6 +60,10 @@ defmodule NSQ.Connection do
     {:connect, nil, state}
   end
 
+  @doc """
+  This is code that runs _to connect_. Refer to the Connection docs for more
+  info.
+  """
   def connect(_info, %{nsqd: {host, port}} = state) do
     if should_attempt_connection?(state) do
       case :gen_tcp.connect(to_char_list(host), port, @socket_opts) do
@@ -79,28 +89,44 @@ defmodule NSQ.Connection do
   end
 
   @doc """
-  This is code that runs _on disconnect_, not code _to disconnect_.
+  This is code that runs _on disconnect_, not code _to disconnect_. Refer to
+  the Connection docs for more info.
   """
   def disconnect(info, %{socket: socket} = state) do
     :ok = :gen_tcp.close(socket)
     case info do
       {:close, from} ->
         Connection.reply(from, :ok)
+        {:stop, :normal, state}
       {:error, :closed} ->
         Logger.error("connection closed")
+        {:connect, :reconnect, increment_reconnects(state)}
       {:error, reason} ->
         Logger.error("connection error: #{inspect reason}")
+        {:connect, :reconnect, increment_reconnects(state)}
     end
-    {:connect, :reconnect, %{state | reconnect_attempts: state.reconnect_attempts + 1, socket: nil}}
   end
 
+  @doc """
+  Publish data to a topic and wait for acknowledgment. This lets us use
+  backpressure.
+  """
   def handle_call({:pub, topic, data}, _from, state) do
-    :gen_tcp.send(state.socket, encode({:pub, topic, data}))
+    pub(state.socket, topic, data)
+    {:reply, :ok, state}
+  end
+
+  @doc """
+  Publish data to a topic without acknowledgment. Maybe it didn't get there?
+  But it's fast!
+  """
+  def handle_call({:pub_async, topic, data}, _from, state) do
+    pub_async(state.socket, topic, data)
     {:reply, :ok, state}
   end
 
   def handle_call({:message_done, _message}, _from, state) do
-    {:reply, :ack, %{state | messages_in_flight: state.messages_in_flight - 1}}
+    {:reply, :ok, %{state | messages_in_flight: state.messages_in_flight - 1}}
   end
 
   def handle_call({:rdy, count}, _from, state) do
@@ -168,8 +194,9 @@ defmodule NSQ.Connection do
 
   def close(conn, conn_state \\ nil) do
     conn_state = conn_state || NSQ.Connection.get_state(conn)
-    :gen_tcp.send(conn.socket, encode(:cls))
-    {:ok, "CLOSE_WAIT"} = :gen_tcp.recv(conn.socket, 0)
+    wait_for_recv conn.socket, "CLOSE_WAIT", fn ->
+      :gen_tcp.send(conn.socket, encode(:cls))
+    end
     {:ok, conn_state}
   end
 
@@ -234,13 +261,12 @@ defmodule NSQ.Connection do
       :gen_tcp.send(socket, encode({:sub, topic, channel}))
 
       Logger.debug "(#{inspect self}) wait for subscription acknowledgment"
-      {:ok, ack} = :gen_tcp.recv(socket, 0)
-      unless ok_msg?(ack), do: raise "expected OK, got #{inspect ack}"
+      {:ok, ok_msg} = :gen_tcp.recv(socket, 0)
 
       Logger.debug("(#{inspect self}) connected, set rdy 1")
       :gen_tcp.send(socket, encode({:rdy, 1}))
 
-      conn_state = %{conn_state | rdy_count: 1, last_rdy: 1}
+      conn_state = initial_rdy_count(conn_state)
     end
 
     # set mode to active: true so we receive tcp messages as erlang messages.
@@ -285,7 +311,15 @@ defmodule NSQ.Connection do
   defp reset_reconnects(state), do: %{state | reconnect_attempts: 0}
 
   defp increment_reconnects(state) do
-    %{state | reconnect_attempts: state.reconnect_attempts + 1}
+    %{state | reconnect_attempts: state.reconnect_attempts + 1, socket: nil}
+  end
+
+  defp increment_rdy_count(state) do
+    %{state | rdy_count: state.rdy_count + 1}
+  end
+
+  defp initial_rdy_count(state) do
+    %{state | rdy_count: 1, last_rdy: 1}
   end
 
   defp should_attempt_connection?(state) do
@@ -302,5 +336,29 @@ defmodule NSQ.Connection do
     delay = reconnect_delay(state)
     Logger.debug("(#{inspect self}) connect failed, try again in #{delay / 1000}s")
     {:backoff, delay, increment_reconnects(state)}
+  end
+
+  defp pub_async(socket, topic, data) do
+    :gen_tcp.send(socket, encode({:pub, topic, data}))
+  end
+
+  # Setting active: false lets us handle the next TCP response via recv instead
+  # of as an Erlang message.
+  defp pub(socket, topic, data) do
+    wait_for_recv socket, "OK", fn ->
+      pub_async(socket, topic, data)
+    end
+  end
+
+  # Use this whenever we need to have an immediate response to a socket send.
+  defp wait_for_recv(socket, body, fun) do
+    :inet.setopts(socket, active: false)
+    fun.()
+    expected = response_msg(body)
+    {:ok, resp} = :gen_tcp.recv(socket, byte_size(expected))
+    unless resp == expected do
+      raise "Unexpected response" <> String.chunk(resp, :printable)
+    end
+    :inet.setopts(socket, active: true)
   end
 end

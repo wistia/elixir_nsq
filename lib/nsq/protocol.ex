@@ -82,8 +82,14 @@ defmodule NSQ.Protocol do
   end
 
 
-  def ok_msg?(msg) do
-    decode(msg) == {:response, "OK"}
+  def response_msg(body) do
+    data = @frame_type_response <> body
+    <<byte_size(data) :: size(32)>> <> @frame_type_response <> body
+  end
+
+
+  def ok_msg do
+    response_msg("OK")
   end
 
 
