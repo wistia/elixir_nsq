@@ -87,10 +87,9 @@ defmodule NSQ.Connection do
       {:close, from} ->
         Connection.reply(from, :ok)
       {:error, :closed} ->
-        :error_Logger.format("connection closed~n", [])
+        Logger.error("connection closed")
       {:error, reason} ->
-        reason = :inet.format_error(reason)
-        :error_Logger.format("connection error: ~s~n", [reason])
+        Logger.error("connection error: #{inspect reason}")
     end
     {:connect, :reconnect, %{state | reconnect_attempts: state.reconnect_attempts + 1, socket: nil}}
   end
