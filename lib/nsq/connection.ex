@@ -160,9 +160,6 @@ defmodule NSQ.Connection do
             state.config.max_attempts,
             socket
           )
-
-        anything ->
-          IO.inspect {"unhandled", anything}
       end
     end
 
