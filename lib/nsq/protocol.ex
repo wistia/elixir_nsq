@@ -48,7 +48,7 @@ defmodule NSQ.Protocol do
           id: <<msg_id :: size(128)>>,
           timestamp: timestamp,
           attempts: attempts,
-          data: rest
+          body: rest
         }}
       _else ->
         {:error, "Data did not match expected message format"}

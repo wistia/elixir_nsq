@@ -26,6 +26,7 @@ defmodule NSQ.Connection do
     parent: nil,
     socket: nil,
     config: %{},
+    msg_sup_pid: nil,
     messages_in_flight: 0,
     nsqd: nil,
     topic: nil,
@@ -44,7 +45,8 @@ defmodule NSQ.Connection do
   # Behaviour Implementation                                #
   # ------------------------------------------------------- #
   def init(conn_state) do
-    {:connect, nil, conn_state}
+    {:ok, msg_sup_pid} = NSQ.MessageSupervisor.start_link
+    {:connect, nil, %{conn_state | msg_sup_pid: msg_sup_pid}}
   end
 
   @doc """
@@ -154,15 +156,21 @@ defmodule NSQ.Connection do
             messages_in_flight: state.messages_in_flight + 1,
             last_msg_timestamp: now
           }
-          NSQ.Message.process(
-            message,
-            state.config.message_handler,
-            state.config.max_attempts,
-            socket
-          )
+          message = %{message| socket: socket}
+
+          # We send a message to ourselves to handle this because, otherwise,
+          # if our message processing finishes too quickly, we can FIN or REQ
+          # before the current TCP process is finished, which means NSQD might
+          # not have recorded that it's in flight yet. (Noticed this in specs.)
+          send(self, {:process_message_async, message})
       end
     end
 
+    {:noreply, state}
+  end
+
+  def handle_info({:process_message_async, message}, state) do
+    NSQ.Message.process_async(self, message, state)
     {:noreply, state}
   end
 
@@ -360,7 +368,7 @@ defmodule NSQ.Connection do
   end
 
   # Use this whenever we need to have an immediate response to a socket send.
-  defp wait_for_recv(socket, body, fun) do
+  def wait_for_recv(socket, body, fun) do
     # active: false means we will only receive tcp messages via :gen_tcp.recv
     # synchronously, not as erlang messages.
     :inet.setopts(socket, active: false)

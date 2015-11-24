@@ -10,7 +10,7 @@ defmodule NSQ.MessageTest do
     timestamp = attrs[:timestamp] || now
     attempts = attrs[:attempts] || 0
     msg_id = attrs[:id] || String.ljust(SecureRandom.hex(8), 16, ?0)
-    data = attrs[:data] || "test data"
+    data = attrs[:body] || "test data"
 
     <<timestamp :: size(64)>>
       <> <<attempts :: size(16)>>
@@ -19,10 +19,10 @@ defmodule NSQ.MessageTest do
   end
 
   test "#from_data given raw data, returns an instance of %NSQ.Message" do
-    raw_data = build_raw_nsq_data(data: "hello world", attempts: 1)
+    raw_data = build_raw_nsq_data(body: "hello world", attempts: 1)
     message = NSQ.Message.from_data(raw_data)
     assert %NSQ.Message{} = message
-    assert message.data == "hello world"
+    assert message.body == "hello world"
     assert message.attempts == 1
     assert String.length(message.id) == 16
   end

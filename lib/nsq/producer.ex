@@ -64,20 +64,20 @@ defmodule NSQ.Producer do
 
 
   def connections(pro, pro_state \\ nil) when is_pid(pro) do
-    pro_state = pro_state || NSQ.Producer.get_state(pro)
+    pro_state = pro_state || get_state(pro)
     Supervisor.which_children(pro_state.conn_sup_pid)
   end
 
 
   def random_connection_pid(pro, pro_state \\ nil) do
-    pro_state = pro_state || NSQ.Producer.get_state(pro)
+    pro_state = pro_state || get_state(pro)
     {_child_id, pid} = Enum.shuffle(connections(pro_state)) |> List.first
     pid
   end
 
 
   def connect_to_nsqds(nsqds, pro, pro_state \\ nil) do
-    pro_state = pro_state || NSQ.Producer.get_state(pro)
+    pro_state = pro_state || get_state(pro)
     new_conns = Enum.map nsqds, fn(nsqd) ->
       {:ok, conn} = NSQ.ConnectionSupervisor.start_child(
         pro, nsqd, pro_state
