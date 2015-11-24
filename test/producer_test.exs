@@ -44,7 +44,7 @@ defmodule NSQ.ProducerTest do
         assert body == "test abc"
         assert msg.attempts == 1
         send(test_pid, :handled)
-        {:ok}
+        :ok
       end
     })
 

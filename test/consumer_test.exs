@@ -21,7 +21,7 @@ defmodule NSQ.ConsumerTest do
         assert body == "HTTP message"
         assert msg.attempts == 1
         send(test_pid, :handled)
-        {:ok}
+        :ok
       end
     })
 
@@ -43,7 +43,7 @@ defmodule NSQ.ConsumerTest do
         assert body == "HTTP message"
         assert msg.attempts == 1
         send(test_pid, :handled)
-        {:ok}
+        :ok
       end
     })
     assert_receive({:EXIT, _pid, {:econnrefused, _last_call}})
@@ -60,7 +60,7 @@ defmodule NSQ.ConsumerTest do
         assert body == "HTTP message"
         assert msg.attempts == 1
         send(test_pid, :handled)
-        {:ok}
+        :ok
       end
     })
     refute_receive({:EXIT, _pid, {:connect_failed, _last_call}}, 2000)
@@ -74,7 +74,7 @@ defmodule NSQ.ConsumerTest do
       message_handler: fn(body, _msg) ->
         assert body == "mpubtest"
         send(test_pid, :handled)
-        {:ok}
+        :ok
       end
     })
 
