@@ -13,9 +13,9 @@ defmodule NSQ.ConsumerTest do
   end
 
 
-  test "#start_link establishes a connection to NSQ and processes messages" do
+  test "#new establishes a connection to NSQ and processes messages" do
     test_pid = self
-    NSQ.Consumer.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
       message_handler: fn(body, msg) ->
         assert body == "HTTP message"
@@ -33,10 +33,10 @@ defmodule NSQ.ConsumerTest do
   end
 
 
-  test "#start_link exits when given a bad address and not able to reconnect" do
+  test "#new exits when given a bad address and not able to reconnect" do
     test_pid = self
     Process.flag(:trap_exit, true)
-    NSQ.Consumer.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 7777}],
       max_reconnect_attempts: 0,
       message_handler: fn(body, msg) ->
@@ -46,14 +46,14 @@ defmodule NSQ.ConsumerTest do
         :ok
       end
     })
-    assert_receive({:EXIT, _pid, {:econnrefused, _last_call}})
+    assert_receive({:EXIT, _pid, {:shutdown, {:failed_to_start_child, NSQ.Consumer, {:econnrefused, _}}}})
   end
 
 
-  test "#start_link lives when given a bad address but able to reconnect" do
+  test "#new lives when given a bad address but able to reconnect" do
     test_pid = self
     Process.flag(:trap_exit, true)
-    NSQ.Consumer.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 7777}],
       max_reconnect_attempts: 1,
       message_handler: fn(body, msg) ->
@@ -63,13 +63,13 @@ defmodule NSQ.ConsumerTest do
         :ok
       end
     })
-    refute_receive({:EXIT, _pid, {:connect_failed, _last_call}}, 2000)
+    refute_receive({:EXIT, _pid, {:shutdown, _}}, 2000)
   end
 
 
   test "receives messages from mpub" do
     test_pid = self
-    NSQ.Consumer.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
       message_handler: fn(body, _msg) ->
         assert body == "mpubtest"

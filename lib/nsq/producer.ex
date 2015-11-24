@@ -1,14 +1,52 @@
 defmodule NSQ.Producer do
-  use GenServer
+  # ------------------------------------------------------- #
+  # Directives                                              #
+  # ------------------------------------------------------- #
   require Logger
   import NSQ.Protocol
+  use GenServer
 
-
+  # ------------------------------------------------------- #
+  # Module Attributes                                       #
+  # ------------------------------------------------------- #
   @initial_state %{
-    connections: [],
     topic: nil,
-    config: %NSQ.Config{}
+    channel: nil,
+    conn_sup_pid: nil,
+    config: nil
   }
+
+  # ------------------------------------------------------- #
+  # Behaviour Implementation                                #
+  # ------------------------------------------------------- #
+  def init(pro_state) do
+    {:ok, conn_sup_pid} = NSQ.ConnectionSupervisor.start_link
+    pro_state = %{pro_state | conn_sup_pid: conn_sup_pid}
+    {:ok, _pro_state} = connect_to_nsqds(pro_state.config.nsqds, self, pro_state)
+  end
+
+  def handle_call({:pub, data}, _from, pro_state) do
+    conn_pid = random_connection_pid(self, pro_state)
+    GenServer.call(conn_pid, {:pub, pro_state.topic, data})
+    {:reply, :ok, pro_state}
+  end
+
+  def handle_call({:pub, topic, data}, _from, pro_state) do
+    conn_pid = random_connection_pid(self, pro_state)
+    GenServer.call(conn_pid, {:pub, topic, data})
+    {:reply, :ok, pro_state}
+  end
+
+  def handle_call(:state, _from, state) do
+    {:reply, state, state}
+  end
+
+  # ------------------------------------------------------- #
+  # API Definitions                                         #
+  # ------------------------------------------------------- #
+  def new(config, topic) do
+    NSQ.ProducerSupervisor.start_link(config, topic)
+  end
 
 
   def start_link(config, topic) do
@@ -19,47 +57,34 @@ defmodule NSQ.Producer do
   end
 
 
-  def init(pro_state) do
-    {:ok, _pro_state} = connect_to_nsqds(pro_state.config.nsqds, self, pro_state)
+  def connections(pro_state) when is_map(pro_state) do
+    children = Supervisor.which_children(pro_state.conn_sup_pid)
+    Enum.map children, fn({child_id, pid, _, _}) -> {child_id, pid} end
   end
 
 
-  def handle_call({:pub, data}, _from, pro_state) do
-    conn_pid = random_connection_pid(self, pro_state)
-    GenServer.call(conn_pid, {:pub, pro_state.topic, data})
-    {:reply, :ok, pro_state}
-  end
-
-
-  def handle_call({:pub, topic, data}, _from, pro_state) do
-    conn_pid = random_connection_pid(self, pro_state)
-    GenServer.call(conn_pid, {:pub, topic, data})
-    {:reply, :ok, pro_state}
-  end
-
-
-  def handle_call(:state, _from, state) do
-    {:reply, state, state}
+  def connections(pro, pro_state \\ nil) when is_pid(pro) do
+    pro_state = pro_state || NSQ.Producer.get_state(pro)
+    Supervisor.which_children(pro_state.conn_sup_pid)
   end
 
 
   def random_connection_pid(pro, pro_state \\ nil) do
     pro_state = pro_state || NSQ.Producer.get_state(pro)
-    {_nsqd, {pid, _ref}} = Enum.shuffle(pro_state.connections) |> List.first
+    {_child_id, pid} = Enum.shuffle(connections(pro_state)) |> List.first
     pid
   end
 
 
   def connect_to_nsqds(nsqds, pro, pro_state \\ nil) do
     pro_state = pro_state || NSQ.Producer.get_state(pro)
-
     new_conns = Enum.map nsqds, fn(nsqd) ->
-      {:ok, conn} = NSQ.Connection.start_monitor(
-        pro, nsqd, pro_state.config, pro_state.topic
+      {:ok, conn} = NSQ.ConnectionSupervisor.start_child(
+        pro, nsqd, pro_state
       )
       {nsqd, conn}
     end
-    {:ok, %{pro_state | connections: pro_state.connections ++ new_conns}}
+    {:ok, pro_state}
   end
 
 

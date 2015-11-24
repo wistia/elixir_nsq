@@ -43,8 +43,8 @@ defmodule NSQ.Connection do
   # ------------------------------------------------------- #
   # Behaviour Implementation                                #
   # ------------------------------------------------------- #
-  def init(state) do
-    {:connect, nil, state}
+  def init(conn_state) do
+    {:connect, nil, conn_state}
   end
 
   @doc """
@@ -59,11 +59,11 @@ defmodule NSQ.Connection do
           {:ok, state} = do_handshake(self, state)
           {:ok, reset_reconnects(state)}
         {:error, reason} ->
-          if using_nsqlookupd?(state) do
+          if length(state.config.nsqlookupds) > 0 do
             log_connect_failed_and_stop({reason, "discovery loop should respawn"}, state)
           else
             if state.config.max_reconnect_attempts > 0 do
-              log_connect_failed_and_reconnect(state)
+              log_connect_failed_and_reconnect(reason, state)
             else
               log_connect_failed_and_stop({reason, "reconnect turned off"}, state)
             end
@@ -173,7 +173,7 @@ defmodule NSQ.Connection do
   # ------------------------------------------------------- #
   # API Definitions                                         #
   # ------------------------------------------------------- #
-  def start_monitor(parent, nsqd, config, topic, channel \\ nil) do
+  def start_link(parent, nsqd, config, topic, channel, opts \\ []) do
     state = %{@initial_state |
       parent: parent,
       nsqd: nsqd,
@@ -181,12 +181,10 @@ defmodule NSQ.Connection do
       topic: topic,
       channel: channel
     }
-    {:ok, pid} = Connection.start(__MODULE__, state)
-    ref = Process.monitor(pid)
-    {:ok, {pid, ref}}
+    {:ok, _pid} = Connection.start_link(__MODULE__, state, opts)
   end
 
-  def get_state({_nsqd, {pid, _ref}} = _connection) do
+  def get_state({_child_id, pid} = _connection) do
     GenServer.call(pid, :state)
   end
 
@@ -273,6 +271,10 @@ defmodule NSQ.Connection do
     {:ok, conn_state}
   end
 
+  def connection_id(parent, {host, port}) do
+    "parent:#{inspect parent}:conn:#{host}:#{port}"
+  end
+
   # ------------------------------------------------------- #
   # Private Functions                                       #
   # ------------------------------------------------------- #
@@ -339,9 +341,9 @@ defmodule NSQ.Connection do
     {:stop, reason, state}
   end
 
-  defp log_connect_failed_and_reconnect(state) do
+  defp log_connect_failed_and_reconnect(reason, state) do
     delay = reconnect_delay(state)
-    Logger.debug("(#{inspect self}) connect failed, try again in #{delay / 1000}s")
+    Logger.debug("(#{inspect self}) connect failed; #{reason}; try again in #{delay / 1000}s")
     {:backoff, delay, increment_reconnects(state)}
   end
 

@@ -7,12 +7,10 @@ defmodule NSQ.Consumer do
   @initial_state %{
     channel: nil,
     config: %NSQ.Config{},
-    connections: [],
+    conn_sup_pid: nil,
     max_in_flight: 2500,
     topic: nil,
     message_handler: nil,
-    rdy_loop_pid: nil,
-    discovery_loop_pid: nil,
     total_rdy_count: 0,
     rdy_retry_conns: %{},
     need_rdy_redistributed: false,
@@ -22,14 +20,19 @@ defmodule NSQ.Consumer do
   }
 
 
+  def new(topic, channel, config) do
+    NSQ.ConsumerSupervisor.start_link(topic, channel, config)
+  end
+
+
   @spec start_link(String.t, String.t, Struct.t) :: {:ok, pid}
-  def start_link(topic, channel, config \\ %{}) do
+  def start_link(topic, channel, config, opts \\ []) do
     {:ok, config} = NSQ.Config.validate(config)
     unless is_valid_topic_name?(topic), do: raise "Invalid topic name #{topic}"
     unless is_valid_channel_name?(channel), do: raise "Invalid channel name #{topic}"
 
     state = %{@initial_state | topic: topic, channel: channel, config: config}
-    GenServer.start_link(__MODULE__, state)
+    GenServer.start_link(__MODULE__, state, opts)
   end
 
 
@@ -38,31 +41,9 @@ defmodule NSQ.Consumer do
   up loops for discovery and RDY redistribution.
   """
   def init(cons_state) do
-    # We need this so we can clean up connections when a consumer is
-    # terminated.
-    Process.flag(:trap_exit, true)
-
-    cons = self
-    {:ok, cons_state} = connect_to_nsqds_on_init(cons, cons_state)
-
-    rdy_loop_pid = spawn_link(fn -> rdy_loop(cons) end)
-    discovery_loop_pid = spawn_link(fn -> discovery_loop(cons) end)
-    cons_state = %{cons_state |
-      rdy_loop_pid: rdy_loop_pid,
-      discovery_loop_pid: discovery_loop_pid
-    }
-
-    {:ok, cons_state}
-  end
-
-
-  def terminate(:shutdown, state) do
-    if state.connections do
-      Enum.each state.connections, fn({_nsqd, {pid, _ref}}) ->
-        Process.exit(pid, :kill)
-      end
-    end
-    :ok
+    {:ok, conn_sup_pid} = NSQ.ConnectionSupervisor.start_link
+    cons_state = %{cons_state | conn_sup_pid: conn_sup_pid}
+    {:ok, _cons_state} = connect_to_nsqds_on_init(self, cons_state)
   end
 
 
@@ -89,12 +70,6 @@ defmodule NSQ.Consumer do
   end
 
 
-  def handle_call(:connection_closed, conn, cons_state) do
-    conns = Enum.reject(cons_state.connections, fn(_nsqd, c) -> c == conn end)
-    {:reply, :ok, %{cons_state | connections: conns, need_rdy_redistributed: true}}
-  end
-
-
   def handle_call({:state, prop}, _from, state) do
     {:reply, state[prop], state}
   end
@@ -105,21 +80,15 @@ defmodule NSQ.Consumer do
   end
 
 
-  @doc """
-  When a monitored process (i.e. one of our nsq connections) crashes, it will
-  send us the DOWN signal. We can demonitor it and clean up here. If using
-  nsqlookupd, a new connection should be naturally respawned via the discovery
-  loop. If not using nsqlookupd, then we can assume backoff reconnects have
-  failed and we should exit with an error.
-  """
-  def handle_info({:DOWN, ref, :process, pid, _reason}, cons_state) do
-    if using_nsqlookupd?(cons_state) do
-      conns = List.delete(cons_state.connections, {ref, pid})
-      Process.demonitor(ref)
-      {:reply, %{cons_state | connections: conns, need_rdy_redistributed: true}}
-    else
-      {:stop, "Connection died, unable to reconnect", cons_state}
-    end
+  def connections(cons_state) when is_map(cons_state) do
+    children = Supervisor.which_children(cons_state.conn_sup_pid)
+    Enum.map children, fn({child_id, pid, _, _}) -> {child_id, pid} end
+  end
+
+
+  def connections(cons, cons_state \\ nil) when is_pid(cons) do
+    cons_state = cons_state || NSQ.Consumer.get_state(cons)
+    Supervisor.which_children(cons_state.conn_sup_pid)
   end
 
 
@@ -161,7 +130,7 @@ defmodule NSQ.Consumer do
     {:ok, cons_state} = connect_to_nsqds(nsqds_to_connect, cons, cons_state)
 
     {:ok, cons_state} = connections_maybe_update_rdy(
-      cons_state.connections, cons, cons_state
+      connections(cons_state), cons, cons_state
     )
 
     {:ok, cons_state}
@@ -172,12 +141,12 @@ defmodule NSQ.Consumer do
     cons_state = cons_state || NSQ.Consumer.get_state(cons)
 
     new_conns = Enum.map nsqds, fn(nsqd) ->
-      {:ok, conn} = NSQ.Connection.start_monitor(
-        cons, nsqd, cons_state.config, cons_state.topic, cons_state.channel
+      {:ok, conn} = NSQ.ConnectionSupervisor.start_child(
+        cons, nsqd, cons_state
       )
       {nsqd, conn}
     end
-    {:ok, %{cons_state | connections: cons_state.connections ++ new_conns}}
+    {:ok, cons_state}
   end
 
 
@@ -185,18 +154,22 @@ defmodule NSQ.Consumer do
   Given a list of connections, force them to stop. Return the new state without
   those connections.
   """
-  def stop_connections(connections, cons, cons_state \\ nil) do
+  def stop_connections(dead_conns, cons, cons_state \\ nil) do
     cons_state = cons_state || NSQ.Consumer.get_state(cons)
 
-    Enum.map connections, fn(_nsqd, {pid, _from}) ->
-      GenServer.call(pid, :stop)
+    Enum.map dead_conns, fn({_nsqd, pid}) ->
+      stop_connection(cons, pid, cons_state)
     end
 
-    alive_conns = Enum.reject cons_state.connections, fn(conn) ->
-      Enum.find(connections, conn)
-    end
+    {:ok, cons_state}
+  end
 
-    {:ok, %{cons_state | connections: alive_conns}}
+
+  def stop_connection(cons, nsqd, cons_state \\ nil) do
+    cons_state = cons_state || NSQ.Consumer.get_state(cons)
+    Supervisor.terminate_child(
+      cons_state.conn_sup_pid, NSQ.Connection.connection_id(cons, nsqd)
+    )
   end
 
 
@@ -207,8 +180,8 @@ defmodule NSQ.Consumer do
   """
   def dead_connections(discovered_nsqds, cons, cons_state \\ nil) do
     cons_state = cons_state || NSQ.Consumer.get_state(cons)
-    Enum.reject cons_state.connections, fn(nsqd, _) ->
-      Enum.find(discovered_nsqds, nsqd)
+    Enum.reject connections(cons_state), fn(conn) ->
+      conn_already_discovered?(cons, conn, discovered_nsqds)
     end
   end
 
@@ -220,18 +193,13 @@ defmodule NSQ.Consumer do
   """
   def new_nsqds(discovered_nsqds, cons, cons_state \\ nil) do
     cons_state = cons_state || NSQ.Consumer.get_state(cons)
-    Enum.reject discovered_nsqds, fn(disc_nsqd) ->
-      Enum.find(cons_state.connections, fn({nsqd, _}) -> nsqd == disc_nsqd end)
+    Enum.reject discovered_nsqds, fn(nsqd) ->
+      nsqd_already_has_connection?(nsqd, cons, cons_state)
     end
   end
 
 
-  defp using_nsqlookupd?(cons_state) do
-    length(cons_state.config.nsqlookupds) > 0
-  end
-
-
-  def rdy_loop(cons) do
+  def rdy_loop(cons, opts \\ []) do
     cons_state = NSQ.Consumer.get_state(cons)
     GenServer.call(cons, :redistribute_rdy)
     delay = cons_state.config.rdy_redistribute_interval
@@ -240,7 +208,7 @@ defmodule NSQ.Consumer do
   end
 
 
-  def discovery_loop(cons) do
+  def discovery_loop(cons, opts \\ []) do
     cons_state = NSQ.Consumer.get_state(cons)
     %NSQ.Config{
       lookupd_poll_interval: poll_interval,
@@ -280,18 +248,18 @@ defmodule NSQ.Consumer do
       {:ok, %{cons_state | backoff_duration: 0}}
     else
       # pick a random connection to test the waters
-      conn_count = length(cons_state.connections)
+      conn_count = count_connections(cons_state)
 
       if conn_count == 0 do
         Logger.warn("no connection available to resume")
         Logger.warn("backing off for 1 second")
         {:ok, _cons_state} = backoff(cons, 1000, cons_state)
       else
-        choice = Enum.random(cons_state.connections)
-        Logger.warning("(#{choice}) backoff timeout expired, sending RDY 1")
+        conn = Enum.random(connections(cons_state))
+        Logger.warning("(#{inspect conn}) backoff timeout expired, sending RDY 1")
 
         # while in backoff only ever let 1 message at a time through
-        {:ok, _cons_state} = update_rdy(cons, choice, 1, cons_state)
+        {:ok, _cons_state} = update_rdy(cons, conn, 1, cons_state)
       end
     end
   end
@@ -301,7 +269,7 @@ defmodule NSQ.Consumer do
     cons_state = cons_state || NSQ.Consumer.get_state(cons)
 
     if should_redistribute_rdy?(cons_state) do
-      conns = cons_state.connections
+      conns = connections(cons_state)
       max_in_flight = cons_state.max_in_flight
       in_backoff = cons_state.backoff_counter > 0
       conn_count = length(conns)
@@ -355,7 +323,7 @@ defmodule NSQ.Consumer do
 
 
   defp should_redistribute_rdy?(cons_state) do
-    conn_count = length(cons_state.connections)
+    conn_count = count_connections(cons_state)
     in_backoff = cons_state.backoff_counter > 0
     in_backoff_timeout = cons_state.backoff_duration > 0
 
@@ -460,14 +428,17 @@ defmodule NSQ.Consumer do
   end
 
 
-  def send_rdy(cons, {_nsqd, {pid, _ref}} = conn, count, cons_state \\ nil, conn_state \\ nil) do
+  def send_rdy(cons, {_nsqd, pid} = conn, count, cons_state \\ nil, conn_state \\ nil) do
     cons_state = cons_state || NSQ.Consumer.get_state(cons)
     conn_state = conn_state || NSQ.Connection.get_state(conn)
 
     if count == 0 && conn_state.last_rdy == 0 do
       {:ok, cons_state}
     else
-      :ok = GenServer.call(pid, {:rdy, count})
+      # We intentionally don't match this call. If the socket isn't set up or
+      # is erroring out, we don't want to propagate that connection error to
+      # the consumer.
+      GenServer.call(pid, {:rdy, count})
       {:ok, cons_state}
     end
   end
@@ -476,7 +447,7 @@ defmodule NSQ.Consumer do
   def per_conn_max_in_flight(cons, cons_state \\ nil) do
     cons_state = cons_state || NSQ.Consumer.get_state(cons)
     max_in_flight = cons_state.max_in_flight
-    conn_count = length(cons_state.connections)
+    conn_count = count_connections(cons_state)
     min(max(1, max_in_flight / conn_count), max_in_flight) |> round
   end
 
@@ -492,5 +463,27 @@ defmodule NSQ.Consumer do
     timestamp
     |> +(@epoch)
     |> :calendar.gregorian_seconds_to_datetime
+  end
+
+
+  defp count_connections(cons_state) do
+    %{active: active} = Supervisor.count_children(cons_state.conn_sup_pid)
+    active
+  end
+
+
+  defp conn_already_discovered?(cons, {conn_id, _}, discovered_nsqds) do
+    Enum.any? discovered_nsqds, fn(nsqd) ->
+      NSQ.Connection.connection_id(cons, nsqd) == conn_id
+    end
+  end
+
+
+  defp nsqd_already_has_connection?(nsqd, cons, cons_state \\ nil) do
+    cons_state = cons_state || NSQ.Consumer.get_state(cons)
+    nsqd_id = NSQ.Connection.connection_id(cons, nsqd)
+    Enum.any? connections(cons_state), fn({child_id, _}) ->
+      child_id == nsqd_id
+    end
   end
 end
