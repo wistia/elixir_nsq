@@ -1,9 +1,10 @@
 defmodule NSQ.Connection do
-  import NSQ.Protocol
-  use Connection
   require Logger
+  use Connection
+  import NSQ.Protocol
 
-
+  @project ElixirNsq.Mixfile.project
+  @user_agent "#{@project[:app]}/#{@project[:version]}"
   @initial_state %{
     parent: nil,
     socket: nil,
@@ -18,22 +19,26 @@ defmodule NSQ.Connection do
     last_rdy: 0,
     max_rdy: 2500,
     last_msg_timestamp: :calendar.datetime_to_gregorian_seconds(:calendar.universal_time),
-    reconnect_attempts: 0
+    reconnect_attempts: 0,
+    stop_flag: false
   }
 
-
   def start_monitor(parent, nsqd, config, topic, channel \\ nil) do
-    state = %{@initial_state | parent: parent, nsqd: nsqd, config: config, topic: topic, channel: channel}
+    state = %{@initial_state |
+      parent: parent,
+      nsqd: nsqd,
+      config: config,
+      topic: topic,
+      channel: channel
+    }
     {:ok, pid} = Connection.start(__MODULE__, state)
     ref = Process.monitor(pid)
     {:ok, {pid, ref}}
   end
 
-
   def init(state) do
     {:connect, nil, state}
   end
-
 
   def connect(_info, %{nsqd: {host, port}} = state) do
     if state.reconnect_attempts == 0 || state.reconnect_attempts < state.config.max_reconnect_attempts do
@@ -76,18 +81,6 @@ defmodule NSQ.Connection do
         :error_Logger.format("connection error: ~s~n", [reason])
     end
     {:connect, :reconnect, %{state | reconnect_attempts: state.reconnect_attempts + 1, socket: nil}}
-  end
-
-
-  defp reconnect_delay(state) do
-    interval = state.config.lookupd_poll_interval
-    jitter = round(interval * state.config.lookupd_poll_jitter * :random.uniform)
-    interval + jitter
-  end
-
-
-  defp using_nsqlookupd?(state) do
-    length(state.config.nsqlookupds) > 0
   end
 
 
@@ -168,16 +161,11 @@ defmodule NSQ.Connection do
   end
 
 
-  def get_state({pid, _ref}) do
-    GenServer.call(pid, :state)
-  end
-
-
-  def close(conn) do
-    expected_response = "CLOSE_WAIT"
-    resp_length = byte_size(expected_response)
+  def close(conn, conn_state \\ nil) do
+    conn_state = conn_state || NSQ.Connection.get_state(conn)
     :gen_tcp.send(conn.socket, encode(:cls))
-    {:ok, _} = :gen_tcp.recv(conn.socket, resp_length)
+    {:ok, "CLOSE_WAIT"} = :gen_tcp.recv(conn.socket, 0)
+    {:ok, conn_state}
   end
 
 
@@ -226,11 +214,6 @@ defmodule NSQ.Connection do
   end
 
 
-  defp now do
-    :calendar.datetime_to_gregorian_seconds(:calendar.universal_time)
-  end
-
-
   def do_handshake(conn, conn_state \\ nil) do
     conn_state = conn_state || NSQ.Connection.get_state(conn)
     %{socket: socket, topic: topic, channel: channel} = conn_state
@@ -263,11 +246,7 @@ defmodule NSQ.Connection do
   end
 
 
-  @project ElixirNsq.Mixfile.project
-  @user_agent "#{@project[:app]}/#{@project[:version]}"
-
-
-  def identify_props(%{nsqd: {host, port}, config: config} = conn_state) do
+  defp identify_props(%{nsqd: {host, port}, config: config} = conn_state) do
     %{
       client_id: "#{host}:#{port} (#{inspect conn_state.parent})",
       hostname: to_string(:net_adm.localhost),
@@ -282,5 +261,22 @@ defmodule NSQ.Connection do
       user_agent: config.user_agent || @user_agent,
       msg_timeout: config.msg_timeout
     }
+  end
+
+
+  defp reconnect_delay(conn_state) do
+    interval = conn_state.config.lookupd_poll_interval
+    jitter = round(interval * conn_state.config.lookupd_poll_jitter * :random.uniform)
+    interval + jitter
+  end
+
+
+  defp using_nsqlookupd?(state) do
+    length(state.config.nsqlookupds) > 0
+  end
+
+
+  defp now do
+    :calendar.datetime_to_gregorian_seconds(:calendar.universal_time)
   end
 end
