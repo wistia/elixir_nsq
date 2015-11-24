@@ -35,6 +35,8 @@ defmodule NSQ.Config do
 
     # Maximum duration when REQueueing (for doubling of deferred requeue)
     max_requeue_delay: 15 * @minutes,
+
+    # NOTE: This doesn't appear to be used anywhere.
     default_requeue_delay: 90 * @seconds,
 
     # Backoff strategy, defaults to exponential backoff. Overwrite this to
