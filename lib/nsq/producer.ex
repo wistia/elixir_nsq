@@ -93,12 +93,26 @@ defmodule NSQ.Producer do
   end
 
 
-  def pub(producer, data) do
-    :ok = GenServer.call(producer, {:pub, data})
+  def pub(pro_pid, data) do
+    child = Supervisor.which_children(pro_pid) |> List.first
+    {_, pid, _, _} = child
+    pub_direct(pid, data)
   end
 
 
-  def pub(producer, topic, data) do
-    :ok = GenServer.call(producer, {:pub, topic, data})
+  def pub_direct(pid, data) do
+    :ok = GenServer.call(pid, {:pub, data})
+  end
+
+
+  def pub(pro_pid, topic, data) do
+    child = Supervisor.which_children(pro_pid) |> List.first
+    {_, pid, _, _} = child
+    pub_direct(pid, topic, data)
+  end
+
+
+  def pub_direct(pid, topic, data) do
+    :ok = GenServer.call(pid, {:pub, topic, data})
   end
 end

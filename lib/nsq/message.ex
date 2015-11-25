@@ -3,7 +3,6 @@ defmodule NSQ.Message do
   # Directives                                              #
   # ------------------------------------------------------- #
   require Logger
-  use GenServer
   import NSQ.Protocol
 
   # ------------------------------------------------------- #
@@ -24,36 +23,20 @@ defmodule NSQ.Message do
   end
 
   @doc """
-  Tell the message supervisor for this connection to start a `process` task for
-  this message.
-  """
-  def process_async(conn, message, conn_state \\ nil) do
-    conn_state = conn_state || NSQ.Connection.get_state(conn_state)
-    NSQ.MessageSupervisor.start_child(
-      conn_state.msg_sup_pid, conn, message, conn_state
-    )
-  end
-
-  @doc """
   This is the main entry point when processing a message. It starts the message
   GenServer and immediately kicks of a processing call.
   """
-  def process(conn, config, socket, message) do
-    message = %NSQ.Message{message |
-      connection: conn,
-      config: config,
-      socket: socket
-    }
-
+  def process(message) do
     if should_fail_message?(message) do
       log_failed_message(message)
       fin(message)
-      end_processing(message)
     else
       result = try do
-        run_handler(config.message_handler, message)
+        run_handler(message.config.message_handler, message)
       catch
-        true -> {:req, -1}
+        any ->
+          Logger.error "Error running message handler: #{inspect any}"
+          {:req, -1}
       end
 
       case result do
@@ -61,9 +44,9 @@ defmodule NSQ.Message do
         :req -> req(message)
         {:req, delay} -> req(message, delay)
       end
-
-      end_processing(message)
     end
+
+    {:message_done, message}
   end
 
   @doc """
@@ -72,6 +55,7 @@ defmodule NSQ.Message do
   been exhausted.
   """
   def fin(message) do
+    Logger.debug("(#{inspect message.connection}) fin msg ID #{message.id}")
     :gen_tcp.send(message.socket, encode({:fin, message.id}))
   end
 
@@ -83,7 +67,7 @@ defmodule NSQ.Message do
   mode, where it stops receiving messages for a fixed duration.
   """
   def req(message, delay \\ -1, backoff \\ false) do
-    Logger.debug("(#{message.connection}) requeue msg ID #{message.id}, delay #{delay}, backoff #{backoff}")
+    Logger.debug("(#{inspect message.connection}) requeue msg ID #{message.id}, delay #{delay}, backoff #{backoff}")
     :gen_tcp.send(message.socket, encode({:req, message.id, delay}))
   end
 
@@ -120,10 +104,5 @@ defmodule NSQ.Message do
     else
       handler.handle_message(message.body, message)
     end
-  end
-
-  defp end_processing(message) do
-    GenServer.call(message.connection, {:message_done, message})
-    Process.exit(self, :normal)
   end
 end

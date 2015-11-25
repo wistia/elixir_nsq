@@ -13,8 +13,8 @@ defmodule NSQ.ProducerTest do
     :ok
   end
 
-  test "#start_link starts a new producer, discoverable via nsqlookupd" do
-    {:ok, producer} = NSQ.Producer.start_link(
+  test "#new starts a new producer, discoverable via nsqlookupd" do
+    {:ok, producer} = NSQ.Producer.new(
       %NSQ.Config{nsqds: @configured_nsqds}, @test_topic
     )
 
@@ -33,12 +33,12 @@ defmodule NSQ.ProducerTest do
   end
 
   test "messages added via pub are handled by a consumer" do
-    {:ok, producer} = NSQ.Producer.start_link(
+    {:ok, producer} = NSQ.Producer.new(
       %NSQ.Config{nsqds: @configured_nsqds}, @test_topic
     )
 
     test_pid = self
-    NSQ.Consumer.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: @configured_nsqds,
       message_handler: fn(body, msg) ->
         assert body == "test abc"

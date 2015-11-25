@@ -45,7 +45,7 @@ defmodule NSQ.Connection do
   # Behaviour Implementation                                #
   # ------------------------------------------------------- #
   def init(conn_state) do
-    {:ok, msg_sup_pid} = NSQ.MessageSupervisor.start_link
+    {:ok, msg_sup_pid} = Task.Supervisor.start_link(strategy: :one_for_one)
     {:connect, nil, %{conn_state | msg_sup_pid: msg_sup_pid}}
   end
 
@@ -114,11 +114,6 @@ defmodule NSQ.Connection do
     {:reply, :ok, state}
   end
 
-  def handle_call({:message_done, _message}, _from, state) do
-    state = state |> increment_rdy_count |> decrement_messages_in_flight
-    {:reply, :ok, state}
-  end
-
   def handle_call({:rdy, count}, _from, state) do
     if state.socket do
       :ok = :gen_tcp.send(state.socket, encode({:rdy, count}))
@@ -151,26 +146,25 @@ defmodule NSQ.Connection do
 
         {:message, data} ->
           message = NSQ.Message.from_data(data)
-          state = %{state |
-            rdy_count: state.rdy_count - 1,
-            messages_in_flight: state.messages_in_flight + 1,
-            last_msg_timestamp: now
+          state = received_message(state)
+          message = %NSQ.Message{message |
+            connection: self,
+            socket: socket,
+            config: state.config
           }
-          message = %{message| socket: socket}
-
-          # We send a message to ourselves to handle this because, otherwise,
-          # if our message processing finishes too quickly, we can FIN or REQ
-          # before the current TCP process is finished, which means NSQD might
-          # not have recorded that it's in flight yet. (Noticed this in specs.)
-          send(self, {:process_message_async, message})
+          task = Task.Supervisor.async(state.msg_sup_pid, NSQ.Message, :process, [message])
+          Process.demonitor(task.ref)
       end
     end
 
     {:noreply, state}
   end
 
-  def handle_info({:process_message_async, message}, state) do
-    NSQ.Message.process_async(self, message, state)
+  # When a task is done, it automatically messages the return value to the
+  # calling process. we can use that opportunity to update the messages in
+  # flight.
+  def handle_info({_ref, {:message_done, _message}}, state) do
+    state = state |> increment_rdy_count |> decrement_messages_in_flight
     {:noreply, state}
   end
 
@@ -325,6 +319,14 @@ defmodule NSQ.Connection do
 
   defp increment_rdy_count(state) do
     %{state | rdy_count: state.rdy_count + 1}
+  end
+
+  defp received_message(state) do
+    %{state |
+      rdy_count: state.rdy_count - 1,
+      messages_in_flight: state.messages_in_flight + 1,
+      last_msg_timestamp: now
+    }
   end
 
   defp decrement_messages_in_flight(state) do
