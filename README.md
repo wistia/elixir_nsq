@@ -11,15 +11,15 @@ See these resources for more info on building client libraries:
 
 TODO:
 
-[ ] RDY redistribution tests
-[ ] RDY retry tests
-[ ] Backoff tests
-[ ] Test message processing concurrency
-[ ] Test connection failure behavior
-[ ] Handle errors reported by NSQD
-[ ] TLS support
-[ ] Auth support
-[ ] Delegates
+- [ ] RDY redistribution tests
+- [ ] RDY retry tests
+- [ ] Backoff tests
+- [ ] Test message processing concurrency
+- [ ] Test connection failure behavior
+- [ ] Handle errors reported by NSQD
+- [ ] TLS support
+- [ ] Auth support
+- [ ] Delegates
 
 ## Publish Messages
 
