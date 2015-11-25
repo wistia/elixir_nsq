@@ -33,18 +33,13 @@ defmodule NSQ.Consumer do
   @doc """
   Starts a Consumer process, called via the supervisor.
   """
-  @spec start_link(pid, String.t, String.t, Struct.t) :: {:ok, pid}
-  def start_link(conn_sup_pid, topic, channel, config, opts \\ []) do
+  @spec start_link(String.t, String.t, Struct.t) :: {:ok, pid}
+  def start_link(topic, channel, config, opts \\ []) do
     {:ok, config} = NSQ.Config.validate(config)
     unless is_valid_topic_name?(topic), do: raise "Invalid topic name #{topic}"
     unless is_valid_channel_name?(channel), do: raise "Invalid channel name #{topic}"
 
-    state = %{@initial_state |
-      conn_sup_pid: conn_sup_pid,
-      topic: topic,
-      channel: channel,
-      config: config
-    }
+    state = %{@initial_state | topic: topic, channel: channel, config: config}
     GenServer.start_link(__MODULE__, state, opts)
   end
 
@@ -53,6 +48,8 @@ defmodule NSQ.Consumer do
   up loops for discovery and RDY redistribution.
   """
   def init(cons_state) do
+    {:ok, conn_sup_pid} = NSQ.ConnectionSupervisor.start_link
+    cons_state = %{cons_state | conn_sup_pid: conn_sup_pid}
     {:ok, _cons_state} = connect_to_nsqds_on_init(self, cons_state)
   end
 
