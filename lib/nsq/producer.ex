@@ -20,8 +20,6 @@ defmodule NSQ.Producer do
   # Behaviour Implementation                                #
   # ------------------------------------------------------- #
   def init(pro_state) do
-    {:ok, conn_sup_pid} = NSQ.ConnectionSupervisor.start_link
-    pro_state = %{pro_state | conn_sup_pid: conn_sup_pid}
     {:ok, _pro_state} = connect_to_nsqds(pro_state.config.nsqds, self, pro_state)
   end
 
@@ -49,10 +47,14 @@ defmodule NSQ.Producer do
   end
 
 
-  def start_link(config, topic) do
+  def start_link(conn_sup_pid, config, topic) do
     {:ok, config} = NSQ.Config.validate(config || %NSQ.Config{})
     unless is_valid_topic_name?(topic), do: raise "Invalid topic name #{topic}"
-    state = %{@initial_state | topic: topic, config: config}
+    state = %{@initial_state |
+      conn_sup_pid: conn_sup_pid,
+      topic: topic,
+      config: config
+    }
     GenServer.start_link(__MODULE__, state)
   end
 
