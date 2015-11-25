@@ -152,8 +152,9 @@ defmodule NSQ.Connection do
             socket: socket,
             config: state.config
           }
-          task = Task.Supervisor.async(state.msg_sup_pid, NSQ.Message, :process, [message])
-          Process.demonitor(task.ref)
+          Task.Supervisor.start_child(
+            state.msg_sup_pid, NSQ.Message, :process, [message]
+          )
       end
     end
 
