@@ -5,12 +5,18 @@ defmodule NSQ.ConnectionSupervisor do
   start_child.
   """
 
+  # ------------------------------------------------------- #
+  # Directives                                              #
+  # ------------------------------------------------------- #
   use Supervisor
 
   def start_link(opts \\ []) do
     Supervisor.start_link(__MODULE__, :ok, opts)
   end
 
+  # ------------------------------------------------------- #
+  # Behaviour Implementation                                #
+  # ------------------------------------------------------- #
   def start_child(parent, nsqd, parent_state \\ nil, opts \\ []) do
     parent_state = parent_state || GenServer.call(parent, :state)
     conn_sup_pid = parent_state.conn_sup_pid
