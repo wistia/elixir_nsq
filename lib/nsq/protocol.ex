@@ -56,16 +56,6 @@ defmodule NSQ.Protocol do
   end
 
 
-  @doc """
-  If MPUB is used, a single TCP response can have data for several messages.
-  In that case, the given data follows the same format, but it means we need
-  to be sensitive to the given message sizes.
-
-      iex> raw_data = <<0, 0, 0, 42, 0, 0, 0, 2, 20, 24, 221, 165, 125, 107, 65, 242, 0, 1>> <> "093cac1231a00224HTTP message" <> <<0, 0, 0, 42, 0, 0, 0, 2, 20, 24, 221, 165, 125, 107, 68, 234, 0, 1>> <> "093cac1231a00225HTTP message"
-      ...> NSQ.Protocol.messages_from_data(raw_data)
-      [<<0, 0, 0, 2, 20, 24, 221, 165, 125, 107, 65, 242, 0, 1>> <> "093cac1231a00224HTTP message", <<0, 0, 0, 2, 20, 24, 221, 165, 125, 107, 68, 234, 0, 1>> <> "093cac1231a00225HTTP message"]
-  """
-
 
   def response_msg(body) do
     data = @frame_type_response <> body

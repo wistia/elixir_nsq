@@ -165,29 +165,63 @@ defmodule NSQ.Connection do
     messages_from_data(socket, data, [])
   end
 
+  @doc """
+  If MPUB is used, a single TCP response can have data for several messages.
+  In that case, the given data follows the same format, but it means we need
+  to be sensitive to the given message sizes.
+
+      iex> raw_data = <<0, 0, 0, 42, 0, 0, 0, 2, 20, 24, 221, 165, 125, 107, 65, 242, 0, 1>> <> "093cac1231a00224HTTP message" <> <<0, 0, 0, 42, 0, 0, 0, 2, 20, 24, 221, 165, 125, 107, 68, 234, 0, 1>> <> "093cac1231a00225HTTP message"
+      ...> NSQ.Connection.messages_from_data(raw_data)
+      [<<0, 0, 0, 2, 20, 24, 221, 165, 125, 107, 65, 242, 0, 1>> <> "093cac1231a00224HTTP message", <<0, 0, 0, 2, 20, 24, 221, 165, 125, 107, 68, 234, 0, 1>> <> "093cac1231a00225HTTP message"]
+  """
   def messages_from_data(socket, data, acc) do
+    # if we're processing many messages in a packet, it's possible
+    # (though unlikely) that a recv stops in the middle of receiving the
+    # message size itself. if our data is less than 4 bytes, we assume this is
+    # the case and get the rest.
+    bytes_left = 4 - byte_size(data)
+    if bytes_left > 0 do
+      data = recv_rest_of_msg(socket, data, min: bytes_left)
+    end
+
     <<stated_msg_size :: size(32)>> <> rest = data
-    rest = recv_rest_of_msg(socket, stated_msg_size, rest)
+
+    # when receiving tcp messages from erlang, we're not guaranteed we have the
+    # entire message when we start processing.
+    bytes_left = stated_msg_size - byte_size(rest)
+    if bytes_left > 0 do
+      rest = recv_rest_of_msg(socket, rest, min: bytes_left)
+    end
+
+    # split our data blob into head/tail, i.e. "message"/"data blob". we're
+    # basically transforming this block into a well-formed list of binary
+    # messages.
     msg = binary_part(rest, 0, stated_msg_size)
     blob_after_msg = binary_part(rest, byte_size(msg), byte_size(rest) - byte_size(msg))
+
     if byte_size(blob_after_msg) > 0 do
       messages_from_data(socket, blob_after_msg, [msg | acc])
     else
+      # We want the return messages to be in the order they were received,
+      # but we've been pushing onto the front of our list.
       Enum.reverse([msg | acc])
     end
   end
 
-  def recv_rest_of_msg(socket, stated_msg_size, rest) do
-    rest_size = byte_size(rest)
-    bytes_left = stated_msg_size - rest_size
-    if bytes_left > 0 do
-      :inet.setopts(socket, active: false)
-      {:ok, more_data} = :gen_tcp.recv(socket, 0)
-      :inet.setopts(socket, active: true)
-      rest <> more_data
-    else
-      rest
+  def recv_rest_of_msg(socket, rest, opts \\ []) do
+    :inet.setopts(socket, active: false)
+
+    # `min` is the minimum bytes we should try to recv before returning.
+    if (min = opts[:min]) && min > 0 do
+      {:ok, min_data} = :gen_tcp.recv(socket, min, 5000)
+      rest = rest <> min_data
     end
+
+    # if more data happens to be available, return that to.
+    {:ok, extra_data} = :gen_tcp.recv(socket, 0)
+
+    :inet.setopts(socket, active: true)
+    rest <> extra_data
   end
 
   # When a task is done, it automatically messages the return value to the
