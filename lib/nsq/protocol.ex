@@ -65,21 +65,6 @@ defmodule NSQ.Protocol do
       ...> NSQ.Protocol.messages_from_data(raw_data)
       [<<0, 0, 0, 2, 20, 24, 221, 165, 125, 107, 65, 242, 0, 1>> <> "093cac1231a00224HTTP message", <<0, 0, 0, 2, 20, 24, 221, 165, 125, 107, 68, 234, 0, 1>> <> "093cac1231a00225HTTP message"]
   """
-  def messages_from_data(data) do
-    messages_from_data(data, [])
-  end
-
-
-  defp messages_from_data(data, acc) do
-    <<msg_size :: size(32)>> <> rest = data
-    msg = binary_part(rest, 0, msg_size)
-    blob_after_msg = binary_part(rest, byte_size(msg), byte_size(rest) - byte_size(msg))
-    if byte_size(blob_after_msg) > 0 do
-      messages_from_data(blob_after_msg, [msg | acc])
-    else
-      Enum.reverse([msg | acc])
-    end
-  end
 
 
   def response_msg(body) do

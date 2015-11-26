@@ -132,7 +132,7 @@ defmodule NSQ.Connection do
   end
 
   def handle_info({:tcp, socket, raw_data}, state) do
-    raw_messages = messages_from_data(raw_data)
+    raw_messages = messages_from_data(socket, raw_data)
     Enum.each raw_messages, fn(raw_message) ->
       case decode(raw_message) do
         {:response, "_heartbeat_"} ->
@@ -159,6 +159,35 @@ defmodule NSQ.Connection do
     end
 
     {:noreply, state}
+  end
+
+  def messages_from_data(socket, data) do
+    messages_from_data(socket, data, [])
+  end
+
+  def messages_from_data(socket, data, acc) do
+    <<stated_msg_size :: size(32)>> <> rest = data
+    rest = recv_rest_of_msg(socket, stated_msg_size, rest)
+    msg = binary_part(rest, 0, stated_msg_size)
+    blob_after_msg = binary_part(rest, byte_size(msg), byte_size(rest) - byte_size(msg))
+    if byte_size(blob_after_msg) > 0 do
+      messages_from_data(socket, blob_after_msg, [msg | acc])
+    else
+      Enum.reverse([msg | acc])
+    end
+  end
+
+  def recv_rest_of_msg(socket, stated_msg_size, rest) do
+    rest_size = byte_size(rest)
+    bytes_left = stated_msg_size - rest_size
+    if bytes_left > 0 do
+      :inet.setopts(socket, active: false)
+      {:ok, more_data} = :gen_tcp.recv(socket, 0)
+      :inet.setopts(socket, active: true)
+      rest <> more_data
+    else
+      rest
+    end
   end
 
   # When a task is done, it automatically messages the return value to the
