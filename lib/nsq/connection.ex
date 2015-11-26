@@ -181,7 +181,7 @@ defmodule NSQ.Connection do
     # the case and get the rest.
     bytes_left = 4 - byte_size(data)
     if bytes_left > 0 do
-      data = recv_rest_of_msg(socket, data, min: bytes_left)
+      data = recv_rest_of_msg(socket, data)
     end
 
     <<stated_msg_size :: size(32)>> <> rest = data
@@ -190,7 +190,7 @@ defmodule NSQ.Connection do
     # entire message when we start processing.
     bytes_left = stated_msg_size - byte_size(rest)
     if bytes_left > 0 do
-      rest = recv_rest_of_msg(socket, rest, min: bytes_left)
+      rest = recv_rest_of_msg(socket, rest)
     end
 
     # split our data blob into head/tail, i.e. "message"/"data blob". we're
@@ -208,20 +208,13 @@ defmodule NSQ.Connection do
     end
   end
 
-  def recv_rest_of_msg(socket, rest, opts \\ []) do
+  def recv_rest_of_msg(socket, rest) do
     :inet.setopts(socket, active: false)
 
-    # `min` is the minimum bytes we should try to recv before returning.
-    if (min = opts[:min]) && min > 0 do
-      {:ok, min_data} = :gen_tcp.recv(socket, min, 5000)
-      rest = rest <> min_data
-    end
-
-    # if more data happens to be available, return that to.
-    {:ok, extra_data} = :gen_tcp.recv(socket, 0)
+    {:ok, more_data} = :gen_tcp.recv(socket, 0)
 
     :inet.setopts(socket, active: true)
-    rest <> extra_data
+    rest <> more_data
   end
 
   # When a task is done, it automatically messages the return value to the
