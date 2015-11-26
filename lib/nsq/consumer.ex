@@ -122,7 +122,7 @@ defmodule NSQ.Consumer do
       nsqds = NSQ.Connection.nsqds_from_lookupds(
         cons_state.config.nsqlookupds, cons_state.topic
       )
-      IO.puts "Discovered nsqds: #{inspect nsqds}"
+      Logger.debug "Discovered nsqds: #{inspect nsqds}"
       {:ok, cons_state} = update_connections(nsqds, cons, cons_state)
     else
       {:error, "No nsqlookupds given"}
