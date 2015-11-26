@@ -83,4 +83,29 @@ defmodule NSQ.ConsumerTest do
     assert_receive(:handled, 2000)
     assert_receive(:handled, 2000)
   end
+
+  def assert_receive_n_times(msg, times, delay) do
+    if times > 0 do
+      assert_receive(msg, delay)
+      assert_receive_n_times(msg, times - 1, delay)
+    end
+  end
+
+  test "processes many messages concurrently" do
+    test_pid = self
+    NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
+      nsqds: [{"127.0.0.1", 6750}],
+      message_handler: fn(body, _msg) ->
+        :timer.sleep(1000)
+        send(test_pid, :handled)
+        :ok
+      end
+    })
+
+    Enum.map 1..100, fn(_i) ->
+      HTTPotion.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
+    end
+
+    assert_receive_n_times(:handled, 100, 2000)
+  end
 end
