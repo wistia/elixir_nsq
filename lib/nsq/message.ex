@@ -27,6 +27,32 @@ defmodule NSQ.Message do
   GenServer and immediately kicks of a processing call.
   """
   def process(message) do
+    # Kick off processing in a separate process, so we can kill it if it takes
+    # too long.
+    parent = self
+    pid = spawn_link fn ->
+      NSQ.Message.process_without_timeout(parent, message)
+    end
+
+    # We expect our function will send us a message when it's done. Block until
+    # that happens. If it takes too long, requeue the message and cancel
+    # processing.
+    receive do
+      {:message_done, _msg} ->
+        unlink_and_exit(pid)
+    after
+      message.config.msg_timeout ->
+        unlink_and_exit(pid)
+        NSQ.Message.req(message)
+    end
+
+    # Even if we've killed the message processing, we're still "done"
+    # processing it for now. That is, we should free up a spot on
+    # messages_in_flight.
+    {:message_done, message}
+  end
+
+  def process_without_timeout(parent, message) do
     if should_fail_message?(message) do
       log_failed_message(message)
       fin(message)
@@ -46,7 +72,7 @@ defmodule NSQ.Message do
       end
     end
 
-    {:message_done, message}
+    send parent, {:message_done, message}
   end
 
   @doc """
@@ -104,5 +130,10 @@ defmodule NSQ.Message do
     else
       handler.handle_message(message.body, message)
     end
+  end
+
+  defp unlink_and_exit(pid) do
+    Process.unlink(pid)
+    Process.exit(pid, :normal)
   end
 end
