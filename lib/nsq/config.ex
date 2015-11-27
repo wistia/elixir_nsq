@@ -1,11 +1,9 @@
 defmodule NSQ.Config do
   alias ElixirNsq.Mixfile
 
-
   @ms 1
   @seconds 1000 * @ms
   @minutes 60 * @seconds
-
 
   @default_config %{
     dial_timeout: 1000,
@@ -111,7 +109,6 @@ defmodule NSQ.Config do
     message_handler: nil
   }
 
-
   @valid_ranges %{
     read_timeout: {100 * @ms, 5 * @minutes},
     write_timeout: {100 * @ms, 5 * @minutes},
@@ -130,9 +127,7 @@ defmodule NSQ.Config do
     msg_timeout: {0, :infinity}
   }
 
-
   defstruct Enum.into(@default_config, [])
-
 
   @doc """
   Given a config, tell us what's wrong with it. If nothing is wrong, we'll
@@ -167,6 +162,28 @@ defmodule NSQ.Config do
     end
   end
 
+  def normalize(config) do
+    config = %NSQ.Config{config | nsqds: normalize_hosts(config.nsqds)}
+    config = %NSQ.Config{config | nsqlookupds: normalize_hosts(config.nsqlookupds)}
+    {:ok, config}
+  end
+
+  def normalize_hosts(hosts) do
+    Enum.map hosts, fn (host_with_port) ->
+      cond do
+        is_tuple(host_with_port) ->
+          {_host, _port} = host_with_port
+        is_binary(host_with_port) ->
+          [host, port] = host_with_port |> String.split(":")
+          {port, _} = Integer.parse(port)
+          {host, port}
+        is_list(host_with_port) ->
+          {_host, _port} = List.to_tuple(host_with_port)
+        true ->
+          raise "Invalid host definition #{inspect host_with_port}"
+      end
+    end
+  end
 
   defp range_error(val, min, max) do
     cond do

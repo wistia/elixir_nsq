@@ -52,33 +52,29 @@ defmodule NSQ.Producer do
     NSQ.ProducerSupervisor.start_link(config, topic)
   end
 
-
   def start_link(config, topic) do
     {:ok, config} = NSQ.Config.validate(config || %NSQ.Config{})
+    {:ok, config} = NSQ.Config.normalize(config)
     unless is_valid_topic_name?(topic), do: raise "Invalid topic name #{topic}"
     state = %{@initial_state | topic: topic, config: config}
     GenServer.start_link(__MODULE__, state)
   end
-
 
   def connections(pro_state) when is_map(pro_state) do
     children = Supervisor.which_children(pro_state.conn_sup_pid)
     Enum.map children, fn({child_id, pid, _, _}) -> {child_id, pid} end
   end
 
-
   def connections(pro, pro_state \\ nil) when is_pid(pro) do
     pro_state = pro_state || get_state(pro)
     Supervisor.which_children(pro_state.conn_sup_pid)
   end
-
 
   def random_connection_pid(pro, pro_state \\ nil) do
     pro_state = pro_state || get_state(pro)
     {_child_id, pid} = Enum.shuffle(connections(pro_state)) |> List.first
     pid
   end
-
 
   def connect_to_nsqds(nsqds, pro, pro_state \\ nil) do
     pro_state = pro_state || get_state(pro)
@@ -90,7 +86,6 @@ defmodule NSQ.Producer do
     end
     {:ok, pro_state}
   end
-
 
   def get_state(producer) do
     GenServer.call(producer, :state)
@@ -138,6 +133,7 @@ defmodule NSQ.Producer do
     {:reply, {:ok, resp}, pro_state}
   end
 
+  # Used to DRY up handle_call({:mpub, ...).
   defp do_mpub(topic, data, pro_state) do
     conn_pid = random_connection_pid(self, pro_state)
     {:ok, resp} = NSQ.Connection.cmd(conn_pid, {:mpub, topic, data})

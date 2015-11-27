@@ -36,6 +36,7 @@ defmodule NSQ.Consumer do
   @spec start_link(String.t, String.t, Struct.t) :: {:ok, pid}
   def start_link(topic, channel, config, opts \\ []) do
     {:ok, config} = NSQ.Config.validate(config)
+    {:ok, config} = NSQ.Config.normalize(config)
     unless is_valid_topic_name?(topic), do: raise "Invalid topic name #{topic}"
     unless is_valid_channel_name?(channel), do: raise "Invalid channel name #{topic}"
 

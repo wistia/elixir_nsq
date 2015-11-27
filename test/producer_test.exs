@@ -4,7 +4,7 @@ defmodule NSQ.ProducerTest do
 
   @test_topic "__nsq_producer_test_topic__"
   @test_channel1 "__nsq_producer_test_channel1__"
-  @configured_nsqds [{"127.0.0.1", 6750}, {"127.0.0.1", 6760}]
+  @configured_nsqds ["127.0.0.1:6750", "127.0.0.1:6760"]
 
   setup do
     Logger.configure(level: :warn)
@@ -26,7 +26,7 @@ defmodule NSQ.ProducerTest do
     discovered_nsqds = NSQ.Connection.nsqds_from_lookupds(lookupds, "__nsq_producer_test_topic__")
 
     # Sort the arrays so we can compare them.
-    configured_nsqds = Enum.sort_by(@configured_nsqds, &inspect(&1))
+    configured_nsqds = Enum.sort_by(NSQ.Config.normalize_hosts(@configured_nsqds), &inspect(&1))
     discovered_nsqds = Enum.sort_by(discovered_nsqds, &inspect(&1))
 
     assert configured_nsqds == discovered_nsqds
