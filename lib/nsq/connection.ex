@@ -25,6 +25,7 @@ defmodule NSQ.Connection do
   @initial_state %{
     parent: nil,
     socket: nil,
+    cmd_queue: :queue.new,
     config: %{},
     reader_pid: nil,
     msg_sup_pid: nil,
@@ -99,13 +100,35 @@ defmodule NSQ.Connection do
     end
   end
 
+  def cmd(conn, cmd, timeout \\ 5000) do
+    {:ok, ref} = GenServer.call(conn, {:cmd, cmd, :reply})
+    receive do
+      {ref, data} ->
+        {:ok, data}
+    after
+      timeout ->
+        {:error, "Command #{cmd} took longer than timeout #{timeout}"}
+    end
+  end
+
+  def cmd_async(conn, cmd) do
+    GenServer.call(conn, {:cmd, cmd, :async})
+  end
+
+  def handle_call({:cmd, cmd, kind}, {pid, ref} = from, state) do
+    :gen_tcp.send(state.socket, encode(cmd))
+    state = %{state | cmd_queue: :queue.in({cmd, from, kind}, state.cmd_queue)}
+    {:reply, {:ok, ref}, state}
+  end
+
   @doc """
   Publish data to a topic and wait for acknowledgment. This lets us use
   backpressure.
   """
-  def handle_call({:pub, topic, data}, _from, state) do
-    pub(state.socket, topic, data)
-    {:reply, :ok, state}
+  def handle_call({:pub, topic, data}, {_pid, ref}, state) do
+    cmd = {:pub, topic, data}
+    :gen_tcp.send(state.socket, encode(cmd))
+    {:reply, {:ok, ref}, %{state| cmd_queue: :queue.in(cmd, state.cmd_queue)}}
   end
 
   @doc """
@@ -113,7 +136,8 @@ defmodule NSQ.Connection do
   But it's fast!
   """
   def handle_call({:pub_async, topic, data}, _from, state) do
-    pub_async(state.socket, topic, data)
+    cmd = {:pub, topic, data}
+    :gen_tcp.send(state.socket, encode(cmd))
     {:reply, :ok, state}
   end
 
@@ -371,17 +395,5 @@ defmodule NSQ.Connection do
     delay = reconnect_delay(state)
     Logger.debug("(#{inspect self}) connect failed; #{reason}; try again in #{delay / 1000}s")
     {:backoff, delay, increment_reconnects(state)}
-  end
-
-  defp pub_async(socket, topic, data) do
-    :gen_tcp.send(socket, encode({:pub, topic, data}))
-  end
-
-  # Setting active: false lets us handle the next TCP response via recv instead
-  # of as an Erlang message.
-  defp pub(socket, topic, data) do
-    wait_for_recv socket, "OK", fn ->
-      pub_async(socket, topic, data)
-    end
   end
 end

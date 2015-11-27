@@ -27,14 +27,14 @@ defmodule NSQ.Producer do
 
   def handle_call({:pub, data}, _from, pro_state) do
     conn_pid = random_connection_pid(self, pro_state)
-    GenServer.call(conn_pid, {:pub, pro_state.topic, data})
-    {:reply, :ok, pro_state}
+    {:ok, resp} = NSQ.Connection.cmd(conn_pid, {:pub, pro_state.topic, data})
+    {:reply, {:ok, resp}, pro_state}
   end
 
   def handle_call({:pub, topic, data}, _from, pro_state) do
     conn_pid = random_connection_pid(self, pro_state)
-    GenServer.call(conn_pid, {:pub, topic, data})
-    {:reply, :ok, pro_state}
+    {:ok, resp} = NSQ.Connection.cmd(conn_pid, {:pub, topic, data})
+    {:reply, {:ok, resp}, pro_state}
   end
 
   def handle_call(:state, _from, state) do
@@ -92,27 +92,22 @@ defmodule NSQ.Producer do
     GenServer.call(producer, :state)
   end
 
-
-  def pub(pro_pid, data) do
-    child = Supervisor.which_children(pro_pid) |> List.first
-    {_, pid, _, _} = child
-    pub_direct(pid, data)
+  @doc """
+  Publish data to whatever topic is the default.
+  """
+  def pub(sup_pid, data) do
+    {:ok, _resp} = GenServer.call(pro_pid_from_sup(sup_pid), {:pub, data})
   end
 
-
-  def pub_direct(pid, data) do
-    :ok = GenServer.call(pid, {:pub, data})
+  @doc """
+  Publish data to a specific topic.
+  """
+  def pub(sup_pid, topic, data) do
+    {:ok, _resp} = GenServer.call(pro_pid_from_sup(sup_pid), {:pub, topic, data})
   end
 
-
-  def pub(pro_pid, topic, data) do
-    child = Supervisor.which_children(pro_pid) |> List.first
-    {_, pid, _, _} = child
-    pub_direct(pid, topic, data)
-  end
-
-
-  def pub_direct(pid, topic, data) do
-    :ok = GenServer.call(pid, {:pub, topic, data})
+  defp pro_pid_from_sup(sup_pid) do
+    {_, pid, _, _} = Supervisor.which_children(sup_pid) |> List.first
+    pid
   end
 end
