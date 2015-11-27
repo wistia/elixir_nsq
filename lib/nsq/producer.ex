@@ -26,13 +26,11 @@ defmodule NSQ.Producer do
   end
 
   def handle_call({:pub, data}, _from, pro_state) do
-    {:ok, resp} = do_pub(pro_state.topic, data, pro_state)
-    {:reply, {:ok, resp}, pro_state}
+    do_pub(pro_state.topic, data, pro_state)
   end
 
   def handle_call({:pub, topic, data}, _from, pro_state) do
-    {:ok, resp} = do_pub(topic, data, pro_state)
-    {:reply, {:ok, resp}, pro_state}
+    do_pub(pro_state.topic, data, pro_state)
   end
 
   def handle_call(:state, _from, state) do
@@ -111,9 +109,10 @@ defmodule NSQ.Producer do
     pid
   end
 
-  # Used by handle_call.
+  # Used to DRY up handle_call({:pub, ...).
   defp do_pub(topic, data, pro_state) do
     conn_pid = random_connection_pid(self, pro_state)
     {:ok, resp} = NSQ.Connection.cmd(conn_pid, {:pub, topic, data})
+    {:reply, {:ok, resp}, pro_state}
   end
 end
