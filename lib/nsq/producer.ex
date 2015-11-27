@@ -26,14 +26,12 @@ defmodule NSQ.Producer do
   end
 
   def handle_call({:pub, data}, _from, pro_state) do
-    conn_pid = random_connection_pid(self, pro_state)
-    {:ok, resp} = NSQ.Connection.cmd(conn_pid, {:pub, pro_state.topic, data})
+    {:ok, resp} = do_pub(pro_state.topic, data, pro_state)
     {:reply, {:ok, resp}, pro_state}
   end
 
   def handle_call({:pub, topic, data}, _from, pro_state) do
-    conn_pid = random_connection_pid(self, pro_state)
-    {:ok, resp} = NSQ.Connection.cmd(conn_pid, {:pub, topic, data})
+    {:ok, resp} = do_pub(topic, data, pro_state)
     {:reply, {:ok, resp}, pro_state}
   end
 
@@ -111,5 +109,11 @@ defmodule NSQ.Producer do
   defp pro_pid_from_sup(sup_pid) do
     {_, pid, _, _} = Supervisor.which_children(sup_pid) |> List.first
     pid
+  end
+
+  # Used by handle_call.
+  defp do_pub(topic, data, pro_state) do
+    conn_pid = random_connection_pid(self, pro_state)
+    {:ok, resp} = NSQ.Connection.cmd(conn_pid, {:pub, topic, data})
   end
 end

@@ -100,6 +100,10 @@ defmodule NSQ.Connection do
     end
   end
 
+  @doc """
+  Calls the command and waits for a response. If a command shouldn't have a
+  response, use cmd_async!
+  """
   def cmd(conn, cmd, timeout \\ 5000) do
     {:ok, ref} = GenServer.call(conn, {:cmd, cmd, :reply})
     receive do
@@ -111,34 +115,17 @@ defmodule NSQ.Connection do
     end
   end
 
+  @doc """
+  Calls the command as usual but doesn't generate a reply back to the caller.
+  """
   def cmd_async(conn, cmd) do
-    GenServer.call(conn, {:cmd, cmd, :async})
+    GenServer.call(conn, {:cmd, cmd, :noreply})
   end
 
   def handle_call({:cmd, cmd, kind}, {pid, ref} = from, state) do
     :gen_tcp.send(state.socket, encode(cmd))
     state = %{state | cmd_queue: :queue.in({cmd, from, kind}, state.cmd_queue)}
     {:reply, {:ok, ref}, state}
-  end
-
-  @doc """
-  Publish data to a topic and wait for acknowledgment. This lets us use
-  backpressure.
-  """
-  def handle_call({:pub, topic, data}, {_pid, ref}, state) do
-    cmd = {:pub, topic, data}
-    :gen_tcp.send(state.socket, encode(cmd))
-    {:reply, {:ok, ref}, %{state| cmd_queue: :queue.in(cmd, state.cmd_queue)}}
-  end
-
-  @doc """
-  Publish data to a topic without acknowledgment. Maybe it didn't get there?
-  But it's fast!
-  """
-  def handle_call({:pub_async, topic, data}, _from, state) do
-    cmd = {:pub, topic, data}
-    :gen_tcp.send(state.socket, encode(cmd))
-    {:reply, :ok, state}
   end
 
   def handle_call({:rdy, count}, _from, state) do
