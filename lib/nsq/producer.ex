@@ -106,6 +106,8 @@ defmodule NSQ.Producer do
     {:ok, _resp} = GenServer.call(pro_pid_from_sup(sup_pid), {:pub, topic, data})
   end
 
+  # The end-user will be targeting the supervisor, but it's the producer that
+  # can actually handle the command.
   defp pro_pid_from_sup(sup_pid) do
     {_, pid, _, _} = Supervisor.which_children(sup_pid) |> List.first
     pid
