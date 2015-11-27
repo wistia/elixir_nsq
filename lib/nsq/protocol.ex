@@ -56,7 +56,6 @@ defmodule NSQ.Protocol do
   end
 
 
-
   def response_msg(body) do
     data = @frame_type_response <> body
     <<byte_size(data) :: size(32)>> <> @frame_type_response <> body

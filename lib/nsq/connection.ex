@@ -26,6 +26,7 @@ defmodule NSQ.Connection do
     parent: nil,
     socket: nil,
     config: %{},
+    reader_pid: nil,
     msg_sup_pid: nil,
     messages_in_flight: 0,
     nsqd: nil,
@@ -59,6 +60,8 @@ defmodule NSQ.Connection do
         {:ok, socket} ->
           state = %{state | socket: socket}
           {:ok, state} = do_handshake(self, state)
+          reader_pid = spawn_link __MODULE__, :recv_nsq_messages, [socket, self]
+          state = %{state | reader_pid: reader_pid}
           {:ok, reset_reconnects(state)}
         {:error, reason} ->
           if length(state.config.nsqlookupds) > 0 do
@@ -131,90 +134,37 @@ defmodule NSQ.Connection do
     {:reply, state, state}
   end
 
-  def handle_info({:tcp, socket, raw_data}, state) do
-    raw_messages = messages_from_data(socket, raw_data)
-    Enum.each raw_messages, fn(raw_message) ->
-      case decode(raw_message) do
-        {:response, "_heartbeat_"} ->
-          :gen_tcp.send(socket, encode(:noop))
+  def handle_cast({:nsq_msg, msg}, %{socket: socket, cmd_queue: cmd_queue} = state) do
+    case msg do
+      {:response, "_heartbeat_"} ->
+        :gen_tcp.send(socket, encode(:noop))
 
-        {:response, data} ->
-          Logger.debug "response #{inspect data}"
+      {:response, data} ->
+        {item, cmd_queue} = :queue.out(cmd_queue)
+        case item do
+          {:value, {cmd, {pid, ref}, :reply}} ->
+            send(pid, {ref, data})
+          :empty -> :ok
+        end
+        state = %{state | cmd_queue: cmd_queue}
 
-        {:error, data} ->
-          Logger.error "error #{inspect data}"
+      {:error, data} ->
+        Logger.error "error #{inspect data}"
 
-        {:message, data} ->
-          message = NSQ.Message.from_data(data)
-          state = received_message(state)
-          message = %NSQ.Message{message |
-            connection: self,
-            socket: socket,
-            config: state.config
-          }
-          Task.Supervisor.start_child(
-            state.msg_sup_pid, NSQ.Message, :process, [message]
-          )
-      end
+      {:message, data} ->
+        message = NSQ.Message.from_data(data)
+        state = received_message(state)
+        message = %NSQ.Message{message |
+          connection: self,
+          socket: socket,
+          config: state.config
+        }
+        Task.Supervisor.start_child(
+          state.msg_sup_pid, NSQ.Message, :process, [message]
+        )
     end
 
     {:noreply, state}
-  end
-
-  def messages_from_data(socket, data) do
-    messages_from_data(socket, data, [])
-  end
-
-  @doc """
-  If MPUB is used, a single TCP response can have data for several messages.
-  In that case, the given data follows the same format, but it means we need
-  to be sensitive to the given message sizes.
-
-      iex> raw_data = <<0, 0, 0, 42, 0, 0, 0, 2, 20, 24, 221, 165, 125, 107, 65, 242, 0, 1>> <> "093cac1231a00224HTTP message" <> <<0, 0, 0, 42, 0, 0, 0, 2, 20, 24, 221, 165, 125, 107, 68, 234, 0, 1>> <> "093cac1231a00225HTTP message"
-      ...> NSQ.Connection.messages_from_data(raw_data)
-      [<<0, 0, 0, 2, 20, 24, 221, 165, 125, 107, 65, 242, 0, 1>> <> "093cac1231a00224HTTP message", <<0, 0, 0, 2, 20, 24, 221, 165, 125, 107, 68, 234, 0, 1>> <> "093cac1231a00225HTTP message"]
-  """
-  def messages_from_data(socket, data, acc) do
-    # if we're processing many messages in a packet, it's possible
-    # (though unlikely) that a recv stops in the middle of receiving the
-    # message size itself. if our data is less than 4 bytes, we assume this is
-    # the case and get the rest.
-    bytes_left = 4 - byte_size(data)
-    if bytes_left > 0 do
-      data = recv_rest_of_msg(socket, data)
-    end
-
-    <<stated_msg_size :: size(32)>> <> rest = data
-
-    # when receiving tcp messages from erlang, we're not guaranteed we have the
-    # entire message when we start processing.
-    bytes_left = stated_msg_size - byte_size(rest)
-    if bytes_left > 0 do
-      rest = recv_rest_of_msg(socket, rest)
-    end
-
-    # split our data blob into head/tail, i.e. "message"/"data blob". we're
-    # basically transforming this block into a well-formed list of binary
-    # messages.
-    msg = binary_part(rest, 0, stated_msg_size)
-    blob_after_msg = binary_part(rest, byte_size(msg), byte_size(rest) - byte_size(msg))
-
-    if byte_size(blob_after_msg) > 0 do
-      messages_from_data(socket, blob_after_msg, [msg | acc])
-    else
-      # We want the return messages to be in the order they were received,
-      # but we've been pushing onto the front of our list.
-      Enum.reverse([msg | acc])
-    end
-  end
-
-  def recv_rest_of_msg(socket, rest) do
-    :inet.setopts(socket, active: false)
-
-    {:ok, more_data} = :gen_tcp.recv(socket, 0)
-
-    :inet.setopts(socket, active: true)
-    rest <> more_data
   end
 
   # When a task is done, it automatically messages the return value to the
@@ -249,9 +199,9 @@ defmodule NSQ.Connection do
 
   def close(conn, conn_state \\ nil) do
     conn_state = conn_state || NSQ.Connection.get_state(conn)
-    wait_for_recv conn.socket, "CLOSE_WAIT", fn ->
-      :gen_tcp.send(conn.socket, encode(:cls))
-    end
+    Process.unlink(conn_state.reader_pid)
+    Process.exit(conn_state.reader_pid, :normal)
+    :gen_tcp.send(conn.socket, encode(:cls))
     {:ok, conn_state}
   end
 
@@ -299,6 +249,17 @@ defmodule NSQ.Connection do
   end
 
 
+  def recv_nsq_messages(sock, conn) do
+    {:ok, <<msg_size :: size(32)>>} = :gen_tcp.recv(sock, 4)
+    {:ok, raw_msg_data} = :gen_tcp.recv(sock, msg_size)
+
+    decoded = decode(raw_msg_data)
+    GenServer.cast(conn, {:nsq_msg, decoded})
+
+    recv_nsq_messages(sock, conn)
+  end
+
+
   def do_handshake(conn, conn_state \\ nil) do
     conn_state = conn_state || NSQ.Connection.get_state(conn)
     %{socket: socket, topic: topic, channel: channel} = conn_state
@@ -325,8 +286,6 @@ defmodule NSQ.Connection do
       conn_state = initial_rdy_count(conn_state)
     end
 
-    # set mode to active: true so we receive tcp messages as erlang messages.
-    :inet.setopts(socket, active: true)
     {:ok, conn_state}
   end
 
@@ -424,25 +383,5 @@ defmodule NSQ.Connection do
     wait_for_recv socket, "OK", fn ->
       pub_async(socket, topic, data)
     end
-  end
-
-  # Use this whenever we need to have an immediate response to a socket send.
-  def wait_for_recv(socket, body, fun) do
-    # active: false means we will only receive tcp messages via :gen_tcp.recv
-    # synchronously, not as erlang messages.
-    :inet.setopts(socket, active: false)
-
-    fun.()
-    {:ok, resp} = :gen_tcp.recv(socket, 0)
-
-    # If body is not specified, then we don't do any validation. It's assumed
-    # that more complex validation will be done elsewhere.
-    if body, do: ^resp = response_msg(body)
-
-    # active: false means we will receive tcp messages as erlang messages
-    # asynchronously, to be handle via handle_info.
-    :inet.setopts(socket, active: true)
-
-    {:ok, resp}
   end
 end

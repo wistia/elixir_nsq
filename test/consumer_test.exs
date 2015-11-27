@@ -102,10 +102,10 @@ defmodule NSQ.ConsumerTest do
       end
     })
 
-    Enum.map 1..100, fn(_i) ->
+    Enum.map 1..1000, fn(_i) ->
       HTTPotion.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
     end
 
-    assert_receive_n_times(:handled, 100, 2000)
+    assert_receive_n_times(:handled, 1000, 2000)
   end
 end
