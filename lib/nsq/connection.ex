@@ -222,7 +222,7 @@ defmodule NSQ.Connection do
   end
 
   def close(conn, conn_state \\ nil) do
-    conn_state = conn_state || NSQ.Connection.get_state(conn)
+    conn_state = conn_state || get_state(conn)
     Process.unlink(conn_state.reader_pid)
     Process.exit(conn_state.reader_pid, :normal)
     :gen_tcp.send(conn.socket, encode(:cls))
@@ -285,7 +285,7 @@ defmodule NSQ.Connection do
 
 
   def do_handshake(conn, conn_state \\ nil) do
-    conn_state = conn_state || NSQ.Connection.get_state(conn)
+    conn_state = conn_state || get_state(conn)
     %{socket: socket, topic: topic, channel: channel} = conn_state
 
     Logger.debug("(#{inspect self}) connecting...")
