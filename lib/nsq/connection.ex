@@ -25,6 +25,7 @@ defmodule NSQ.Connection do
   @initial_state %{
     parent: nil,
     socket: nil,
+    cmd_resp_queue: :queue.new,
     cmd_queue: :queue.new,
     config: %{},
     reader_pid: nil,
@@ -63,6 +64,7 @@ defmodule NSQ.Connection do
           {:ok, state} = do_handshake(self, state)
           reader_pid = spawn_link __MODULE__, :recv_nsq_messages, [socket, self]
           state = %{state | reader_pid: reader_pid}
+          GenServer.cast(self, :flush_cmd_queue)
           {:ok, reset_reconnects(state)}
         {:error, reason} ->
           if length(state.config.nsqlookupds) > 0 do
@@ -100,32 +102,16 @@ defmodule NSQ.Connection do
     end
   end
 
-  @doc """
-  Calls the command and waits for a response. If a command shouldn't have a
-  response, use cmd_async!
-  """
-  def cmd(conn, cmd, timeout \\ 5000) do
-    {:ok, ref} = GenServer.call(conn, {:cmd, cmd, :reply})
-    receive do
-      {ref, data} ->
-        {:ok, data}
-    after
-      timeout ->
-        {:error, "Command #{cmd} took longer than timeout #{timeout}"}
-    end
-  end
-
-  @doc """
-  Calls the command as usual but doesn't generate a reply back to the caller.
-  """
-  def cmd_async(conn, cmd) do
-    GenServer.call(conn, {:cmd, cmd, :noreply})
-  end
-
   def handle_call({:cmd, cmd, kind}, {pid, ref} = from, state) do
-    :gen_tcp.send(state.socket, encode(cmd))
-    state = %{state | cmd_queue: :queue.in({cmd, from, kind}, state.cmd_queue)}
-    {:reply, {:ok, ref}, state}
+    if state.socket do
+      state = send_data_and_queue_resp(state, cmd, from, kind)
+      {:reply, {:ok, ref}, state}
+    else
+      # Not connected currently; add this call onto a queue to be run as soon
+      # as we reconnect.
+      state = %{state | cmd_queue: :queue.in({cmd, from, kind}, state.cmd_queue)}
+      {:reply, {:error, :no_socket}, state}
+    end
   end
 
   def handle_call({:rdy, count}, _from, state) do
@@ -145,19 +131,23 @@ defmodule NSQ.Connection do
     {:reply, state, state}
   end
 
-  def handle_cast({:nsq_msg, msg}, %{socket: socket, cmd_queue: cmd_queue} = state) do
+  def handle_cast(:flush_cmd_queue, state) do
+    {:noreply, flush_cmd_queue(state)}
+  end
+
+  def handle_cast({:nsq_msg, msg}, %{socket: socket, cmd_resp_queue: cmd_resp_queue} = state) do
     case msg do
       {:response, "_heartbeat_"} ->
         :gen_tcp.send(socket, encode(:noop))
 
       {:response, data} ->
-        {item, cmd_queue} = :queue.out(cmd_queue)
+        {item, cmd_resp_queue} = :queue.out(cmd_resp_queue)
         case item do
           {:value, {cmd, {pid, ref}, :reply}} ->
             send(pid, {ref, data})
           :empty -> :ok
         end
-        state = %{state | cmd_queue: cmd_queue}
+        state = %{state | cmd_resp_queue: cmd_resp_queue}
 
       {:error, data} ->
         Logger.error "error #{inspect data}"
@@ -259,7 +249,6 @@ defmodule NSQ.Connection do
     end
   end
 
-
   def recv_nsq_messages(sock, conn) do
     {:ok, <<msg_size :: size(32)>>} = :gen_tcp.recv(sock, 4)
     {:ok, raw_msg_data} = :gen_tcp.recv(sock, msg_size)
@@ -269,7 +258,6 @@ defmodule NSQ.Connection do
 
     recv_nsq_messages(sock, conn)
   end
-
 
   def do_handshake(conn, conn_state \\ nil) do
     conn_state = conn_state || get_state(conn)
@@ -298,6 +286,28 @@ defmodule NSQ.Connection do
     end
 
     {:ok, conn_state}
+  end
+
+  @doc """
+  Calls the command and waits for a response. If a command shouldn't have a
+  response, use cmd_async!
+  """
+  def cmd(conn, cmd, timeout \\ 5000) do
+    {:ok, ref} = GenServer.call(conn, {:cmd, cmd, :reply})
+    receive do
+      {ref, data} ->
+        {:ok, data}
+    after
+      timeout ->
+        {:error, "Command #{cmd} took longer than timeout #{timeout}"}
+    end
+  end
+
+  @doc """
+  Calls the command as usual but doesn't generate a reply back to the caller.
+  """
+  def cmd_async(conn, cmd) do
+    GenServer.call(conn, {:cmd, cmd, :noreply})
   end
 
   def connection_id(parent, {host, port}) do
@@ -382,5 +392,23 @@ defmodule NSQ.Connection do
     delay = reconnect_delay(state)
     Logger.debug("(#{inspect self}) connect failed; #{reason}; try again in #{delay / 1000}s")
     {:backoff, delay, increment_reconnects(state)}
+  end
+
+  defp send_data_and_queue_resp(state, cmd, from, kind) do
+    :gen_tcp.send(state.socket, encode(cmd))
+    %{state |
+      cmd_resp_queue: :queue.in({cmd, from, kind}, state.cmd_resp_queue)
+    }
+  end
+
+  defp flush_cmd_queue(state) do
+    {item, new_queue} = :queue.out(state.cmd_queue)
+    case item do
+      {:value, {cmd, from, kind}} ->
+        send_data_and_queue_resp(state, cmd, from, kind)
+        flush_cmd_queue(%{state | cmd_queue: new_queue})
+      :empty ->
+        %{state | cmd_queue: new_queue}
+    end
   end
 end
