@@ -5,6 +5,9 @@ defmodule NSQ.Protocol do
   @frame_type_message <<2 :: size(32)>>
 
 
+  @doc """
+  Refer to http://nsq.io/clients/tcp_protocol_spec.html.
+  """
   def encode(cmd) do
     case cmd do
       :magic_v2 -> "  V2"
@@ -14,6 +17,11 @@ defmodule NSQ.Protocol do
         "IDENTIFY\n" <> <<byte_size(json) :: size(32)>> <> json
       {:pub, topic, data} ->
         "PUB #{topic}\n" <> << byte_size(data) :: size(32) >> <> data
+      {:mpub, topic, data} ->
+        {msgs, bytes, count} = Enum.reduce data, {[], 0, 0}, &mpub_info_acc/2
+        "MPUB #{topic}\n"
+          <> <<bytes :: size(32)>> <> <<count :: size(32)>>
+          <> Enum.join(msgs, "")
       {:sub, topic, channel} -> "SUB #{topic} #{channel}\n"
       {:fin, msg_id} -> "FIN #{msg_id}\n"
       {:req, msg_id, delay} -> "REQ #{msg_id} #{delay}\n"
@@ -81,5 +89,13 @@ defmodule NSQ.Protocol do
     len = String.length(name)
     len > 0 && len <= 64 &&
       Regex.match?(@valid_topic_channel_name_regex, name)
+  end
+
+
+  # Get all our mpub info in one pass. Expect this to be called via
+  # Enum.reduce.
+  defp mpub_info_acc(msg, {msgs, bytes, count}) do
+    encoded_msg = <<byte_size(msg) :: size(32)>> <> msg
+    {[encoded_msg | msgs], bytes + byte_size(encoded_msg), count + 1}
   end
 end

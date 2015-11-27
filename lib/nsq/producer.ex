@@ -33,6 +33,14 @@ defmodule NSQ.Producer do
     do_pub(pro_state.topic, data, pro_state)
   end
 
+  def handle_call({:mpub, data}, _from, pro_state) do
+    do_mpub(pro_state.topic, data, pro_state)
+  end
+
+  def handle_call({:mpub, topic, data}, _from, pro_state) do
+    do_mpub(topic, data, pro_state)
+  end
+
   def handle_call(:state, _from, state) do
     {:reply, state, state}
   end
@@ -102,6 +110,20 @@ defmodule NSQ.Producer do
     {:ok, _resp} = GenServer.call(pro_pid_from_sup(sup_pid), {:pub, topic, data})
   end
 
+  @doc """
+  Publish data to whatever topic is the default.
+  """
+  def mpub(sup_pid, data) do
+    GenServer.call(pro_pid_from_sup(sup_pid), {:mpub, data})
+  end
+
+  @doc """
+  Publish data to a specific topic.
+  """
+  def mpub(sup_pid, topic, data) do
+    {:ok, _resp} = GenServer.call(pro_pid_from_sup(sup_pid), {:mpub, topic, data})
+  end
+
   # The end-user will be targeting the supervisor, but it's the producer that
   # can actually handle the command.
   defp pro_pid_from_sup(sup_pid) do
@@ -113,6 +135,12 @@ defmodule NSQ.Producer do
   defp do_pub(topic, data, pro_state) do
     conn_pid = random_connection_pid(self, pro_state)
     {:ok, resp} = NSQ.Connection.cmd(conn_pid, {:pub, topic, data})
+    {:reply, {:ok, resp}, pro_state}
+  end
+
+  defp do_mpub(topic, data, pro_state) do
+    conn_pid = random_connection_pid(self, pro_state)
+    {:ok, resp} = NSQ.Connection.cmd(conn_pid, {:mpub, topic, data})
     {:reply, {:ok, resp}, pro_state}
   end
 end

@@ -51,4 +51,26 @@ defmodule NSQ.ProducerTest do
     NSQ.Producer.pub(producer, "test abc")
     assert_receive(:handled, 2000)
   end
+
+  test "messages added via mpub are handled by a consumer" do
+    {:ok, producer} = NSQ.Producer.new(
+      %NSQ.Config{nsqds: @configured_nsqds}, @test_topic
+    )
+
+    test_pid = self
+    {:ok, bodies} = Agent.start_link(fn -> [] end)
+    NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
+      nsqds: @configured_nsqds,
+      message_handler: fn(body, msg) ->
+        Agent.update bodies, fn(list) -> [body|list] end
+        send(test_pid, :handled)
+        :ok
+      end
+    })
+
+    NSQ.Producer.mpub(producer, ["def", "ghi"])
+    assert_receive(:handled, 2000)
+    assert_receive(:handled, 2000)
+    assert Agent.get(bodies, fn(list) -> list end) == ["def", "ghi"]
+  end
 end
