@@ -249,6 +249,11 @@ defmodule NSQ.Connection do
     end
   end
 
+  @doc """
+  This is the recv loop that we kick off in a separate process immediately
+  after the handshake. We send each incoming NSQ message as an erlang message
+  back to the connection for handling.
+  """
   def recv_nsq_messages(sock, conn) do
     {:ok, <<msg_size :: size(32)>>} = :gen_tcp.recv(sock, 4)
     {:ok, raw_msg_data} = :gen_tcp.recv(sock, msg_size)
@@ -259,33 +264,49 @@ defmodule NSQ.Connection do
     recv_nsq_messages(sock, conn)
   end
 
+  @doc """
+  Immediately after connecting to the NSQ socket, both consumers and producers
+  follow this protocol.
+  """
   def do_handshake(conn, conn_state \\ nil) do
     conn_state = conn_state || get_state(conn)
     %{socket: socket, topic: topic, channel: channel} = conn_state
 
-    Logger.debug("(#{inspect self}) connecting...")
-    :ok = :gen_tcp.send(socket, encode(:magic_v2))
+    socket |> send_magic_v2
+    socket |> identify(conn_state)
 
+    # Producers don't have a channel, so they won't do this.
+    if channel do
+      conn_state = socket |> subscribe(conn_state)
+    end
+
+    {:ok, conn_state}
+  end
+
+  defp send_magic_v2(socket) do
+    Logger.debug("(#{inspect self}) sending magic v2...")
+    :ok = :gen_tcp.send(socket, encode(:magic_v2))
+  end
+
+  defp identify(socket, conn_state) do
     Logger.debug("(#{inspect self}) identifying...")
     identify_obj = encode({:identify, identify_props(conn_state)})
     :ok = :gen_tcp.send(socket, identify_obj)
     {:ok, _resp} = :gen_tcp.recv(socket, 0)
+  end
 
-    if channel do
-      Logger.debug "(#{inspect self}) subscribe to #{topic} #{channel}"
-      :gen_tcp.send(socket, encode({:sub, topic, channel}))
+  defp subscribe(socket, %{topic: topic, channel: channel} = conn_state) do
+    Logger.debug "(#{inspect self}) subscribe to #{topic} #{channel}"
+    :gen_tcp.send(socket, encode({:sub, topic, channel}))
 
-      Logger.debug "(#{inspect self}) wait for subscription acknowledgment"
-      expected = ok_msg
-      {:ok, ^expected} = :gen_tcp.recv(socket, 0)
+    Logger.debug "(#{inspect self}) wait for subscription acknowledgment"
+    expected = ok_msg
+    {:ok, ^expected} = :gen_tcp.recv(socket, 0)
 
-      Logger.debug("(#{inspect self}) connected, set rdy 1")
-      :gen_tcp.send(socket, encode({:rdy, 1}))
+    Logger.debug("(#{inspect self}) connected, set rdy 1")
+    :gen_tcp.send(socket, encode({:rdy, 1}))
 
-      conn_state = initial_rdy_count(conn_state)
-    end
-
-    {:ok, conn_state}
+    initial_rdy_count(conn_state)
   end
 
   @doc """
