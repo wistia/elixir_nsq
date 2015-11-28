@@ -85,6 +85,11 @@ defmodule NSQ.Consumer do
     end
   end
 
+  def handle_call({:start_stop_continue_backoff, backoff_flag}, _from, cons_state) do
+    start_stop_continue_backoff(self, backoff_flag, cons_state)
+    {:reply, :ok, cons_state}
+  end
+
   def handle_call(:state, _from, state) do
     {:reply, state, state}
   end
@@ -240,7 +245,50 @@ defmodule NSQ.Consumer do
     GenServer.call(cons, :state)
   end
 
-  # TODO: Test and doc
+  def start_stop_continue_backoff(cons, backoff_signal, cons_state \\ nil) do
+    cons_state = cons_state || get_state(cons)
+
+    backoff_updated = false
+    backoff_counter = cons_state.backoff_counter
+    cond do
+      backoff_signal == :resume ->
+        backoff_updated = true
+        backoff_counter = backoff_counter - 1
+      backoff_signal == :backoff ->
+        backoff_updated = true
+        backoff_counter = backoff_counter + 1
+      true ->
+        backoff_updated = false
+    end
+    cons_state = %{cons_state | backoff_counter: backoff_counter}
+
+    cond do
+      backoff_counter == 0 && backoff_updated ->
+        count = per_conn_max_in_flight(cons, cons_state)
+        Logger.warn "exiting backoff, returning all to RDY #{count}"
+        Enum.map connections(cons_state), &update_rdy(cons, &1, count, cons_state)
+        {:ok, cons_state}
+      backoff_counter > 0 ->
+        backoff_duration = calculate_backoff(cons_state)
+        Logger.warn "backing off for #{backoff_duration / 1000} seconds (backoff level #{backoff_counter}), setting all to RDY 0"
+        # send RDY 0 immediately (to *all* connections)
+        Enum.map connections(cons_state), &update_rdy(cons, &1, 0, cons_state)
+        backoff(cons, backoff_duration, cons_state)
+      true ->
+        {:ok, cons_state}
+    end
+  end
+
+  def calculate_backoff(cons_state) do
+    %{backoff_multiplier: mult, backoff_counter: attempts} = cons_state
+    min(
+      mult * :math.pow(2, attempts),
+      cons_state.config.max_backoff_duration
+    )
+  end
+
+  @doc """
+  """
   def backoff(cons, duration, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
     spawn_link fn ->
@@ -262,14 +310,16 @@ defmodule NSQ.Consumer do
       if conn_count == 0 do
         Logger.warn("no connection available to resume")
         Logger.warn("backing off for 1 second")
-        {:ok, _cons_state} = backoff(cons, 1000, cons_state)
+        {:ok, cons_state} = backoff(cons, 1000, cons_state)
       else
         conn = Enum.random(connections(cons_state))
         Logger.warning("(#{inspect conn}) backoff timeout expired, sending RDY 1")
 
         # while in backoff only ever let 1 message at a time through
-        {:ok, _cons_state} = update_rdy(cons, conn, 1, cons_state)
+        {:ok, cons_state} = update_rdy(cons, conn, 1, cons_state)
       end
+
+      {:ok, %{cons_state | backoff_duration: 0}}
     end
   end
 
