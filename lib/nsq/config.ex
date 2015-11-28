@@ -98,7 +98,7 @@ defmodule NSQ.Config do
     output_buffer_timeout: 250 * @ms,
 
     # Maximum number of messages to allow in flight (concurrency knob)
-    max_in_flight: 1,
+    max_in_flight: 2500,
 
     # The server-side message timeout for messages delivered to this client
     msg_timeout: 60 * @seconds,

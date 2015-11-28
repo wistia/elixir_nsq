@@ -40,7 +40,12 @@ defmodule NSQ.Consumer do
     unless is_valid_topic_name?(topic), do: raise "Invalid topic name #{topic}"
     unless is_valid_channel_name?(channel), do: raise "Invalid channel name #{topic}"
 
-    state = %{@initial_state | topic: topic, channel: channel, config: config}
+    state = %{@initial_state |
+      topic: topic,
+      channel: channel,
+      config: config,
+      max_in_flight: config.max_in_flight
+    }
     GenServer.start_link(__MODULE__, state, opts)
   end
 
