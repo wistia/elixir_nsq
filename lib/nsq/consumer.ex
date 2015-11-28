@@ -21,6 +21,9 @@ defmodule NSQ.Consumer do
     backoff_duration: 0
   }
 
+  # ------------------------------------------------------- #
+  # Behaviour Implementation                                #
+  # ------------------------------------------------------- #
   @doc """
   This is the standard way to initialize a consumer. It actually initializes a
   supervisor, but we have it in NSQ.Consumer so end-users don't need to think
@@ -61,7 +64,7 @@ defmodule NSQ.Consumer do
 
   @doc """
   The RDY loop periodically calls this to make sure RDY is balanced among our
-  connections.
+  connections. Started from the supervisor.
   """
   def handle_call(:redistribute_rdy, _from, cons_state) do
     {:ok, cons_state} = redistribute_rdy(self, cons_state)
@@ -69,16 +72,8 @@ defmodule NSQ.Consumer do
   end
 
   @doc """
-  Called via retry_rdy.
-  """
-  def handle_call({:update_rdy, conn, count}, _from, cons_state) do
-    {:ok, cons_state} = update_rdy(self, conn, count, cons_state)
-    {:reply, :ok, cons_state}
-  end
-
-  @doc """
   The discovery loop calls this periodically to add/remove active nsqd
-  connections.
+  connections. Started from the supervisor.
   """
   def handle_call(:discover_nsqds, _from, cons_state) do
     if length(cons_state.config.nsqlookupds) > 0 do
@@ -426,6 +421,9 @@ defmodule NSQ.Consumer do
     min(max(1, max_in_flight / conn_count), max_in_flight) |> round
   end
 
+  # ------------------------------------------------------- #
+  # Private Functions                                       #
+  # ------------------------------------------------------- #
   defp now do
     :calendar.datetime_to_gregorian_seconds(:calendar.universal_time)
   end
