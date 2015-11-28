@@ -59,16 +59,17 @@ defmodule NSQ.Message do
     else
       result = try do
         run_handler(message.config.message_handler, message)
-      catch
-        any ->
-          Logger.error "Error running message handler: #{inspect any}"
-          {:req, -1}
+      rescue
+        e ->
+          Logger.error "Error running message handler: #{inspect e}"
+          {:req, -1, true}
       end
 
       case result do
         :ok -> fin(message)
         :req -> req(message)
         {:req, delay} -> req(message, delay)
+        {:req, delay, backoff} -> req(message, delay, backoff)
       end
     end
 
@@ -95,6 +96,11 @@ defmodule NSQ.Message do
   """
   def req(message, delay \\ -1, backoff \\ false) do
     Logger.debug("(#{inspect message.connection}) requeue msg ID #{message.id}, delay #{delay}, backoff #{backoff}")
+    if delay == -1 do
+      delay = calculate_delay(
+        message.attempts, message.config.max_requeue_delay
+      )
+    end
     :gen_tcp.send(message.socket, encode({:req, message.id, delay}))
     if backoff do
       GenServer.call(message.consumer, {:start_stop_continue_backoff, :backoff})
@@ -141,5 +147,14 @@ defmodule NSQ.Message do
   defp unlink_and_exit(pid) do
     Process.unlink(pid)
     Process.exit(pid, :normal)
+  end
+
+  defp calculate_delay(attempts, max_requeue_delay) do
+    exponential_backoff = :math.pow(2, attempts)
+    jitter = round(0.3 * :random.uniform * exponential_backoff)
+    min(
+      exponential_backoff + jitter,
+      max_requeue_delay
+    ) |> round
   end
 end

@@ -34,9 +34,6 @@ defmodule NSQ.Config do
     # Maximum duration when REQueueing (for doubling of deferred requeue)
     max_requeue_delay: 15 * @minutes,
 
-    # NOTE: This doesn't appear to be used anywhere.
-    default_requeue_delay: 90 * @seconds,
-
     # Backoff strategy, defaults to exponential backoff. Overwrite this to
     # define alternative backoff algorithms
     backoff_strategy: :exponential,
@@ -115,7 +112,6 @@ defmodule NSQ.Config do
     lookupd_poll_interval: {10 * @ms, 5 * @minutes},
     lookupd_poll_jitter: {0, 1},
     max_requeue_delay: {0, 60 * @minutes},
-    default_requeue_delay: {0, 60 * @minutes},
     max_backoff_duration: {0, 60 * @minutes},
     backoff_multiplier: {0, 60 * @minutes},
     max_attempts: {0, 65535},

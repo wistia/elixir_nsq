@@ -299,11 +299,12 @@ defmodule NSQ.Consumer do
   end
 
   def calculate_backoff(cons_state) do
-    %{backoff_multiplier: mult, backoff_counter: attempts} = cons_state
+    attempts = cons_state.backoff_counter
+    mult = cons_state.config.backoff_multiplier
     min(
       mult * :math.pow(2, attempts),
       cons_state.config.max_backoff_duration
-    )
+    ) |> round
   end
 
   @doc """
