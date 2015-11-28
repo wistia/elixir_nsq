@@ -157,6 +157,7 @@ defmodule NSQ.Connection do
         state = received_message(state)
         message = %NSQ.Message{message |
           connection: self,
+          consumer: state.parent,
           socket: socket,
           config: state.config
         }

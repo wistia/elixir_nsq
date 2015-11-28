@@ -8,7 +8,7 @@ defmodule NSQ.Message do
   # ------------------------------------------------------- #
   # Struct Definition                                       #
   # ------------------------------------------------------- #
-  defstruct [:id, :timestamp, :attempts, :body, :connection, :socket, :config]
+  defstruct [:id, :timestamp, :attempts, :body, :connection, :consumer, :socket, :config]
 
   # ------------------------------------------------------- #
   # API Definitions                                         #
@@ -83,6 +83,7 @@ defmodule NSQ.Message do
   def fin(message) do
     Logger.debug("(#{inspect message.connection}) fin msg ID #{message.id}")
     :gen_tcp.send(message.socket, encode({:fin, message.id}))
+    GenServer.call(message.consumer, {:start_stop_continue_backoff, :resume})
   end
 
   @doc """
@@ -95,6 +96,11 @@ defmodule NSQ.Message do
   def req(message, delay \\ -1, backoff \\ false) do
     Logger.debug("(#{inspect message.connection}) requeue msg ID #{message.id}, delay #{delay}, backoff #{backoff}")
     :gen_tcp.send(message.socket, encode({:req, message.id, delay}))
+    if backoff do
+      GenServer.call(message.consumer, {:start_stop_continue_backoff, :backoff})
+    else
+      GenServer.call(message.consumer, {:start_stop_continue_backoff, :resume})
+    end
   end
 
   @doc """
