@@ -95,34 +95,36 @@ defmodule NSQ.Producer do
   Publish data to whatever topic is the default.
   """
   def pub(sup_pid, data) do
-    {:ok, _resp} = GenServer.call(pro_pid_from_sup(sup_pid), {:pub, data})
+    {:ok, _resp} = GenServer.call(get(sup_pid), {:pub, data})
   end
 
   @doc """
   Publish data to a specific topic.
   """
   def pub(sup_pid, topic, data) do
-    {:ok, _resp} = GenServer.call(pro_pid_from_sup(sup_pid), {:pub, topic, data})
+    {:ok, _resp} = GenServer.call(get(sup_pid), {:pub, topic, data})
   end
 
   @doc """
   Publish data to whatever topic is the default.
   """
   def mpub(sup_pid, data) do
-    GenServer.call(pro_pid_from_sup(sup_pid), {:mpub, data})
+    GenServer.call(get(sup_pid), {:mpub, data})
   end
 
   @doc """
   Publish data to a specific topic.
   """
   def mpub(sup_pid, topic, data) do
-    {:ok, _resp} = GenServer.call(pro_pid_from_sup(sup_pid), {:mpub, topic, data})
+    {:ok, _resp} = GenServer.call(get(sup_pid), {:mpub, topic, data})
   end
 
   # The end-user will be targeting the supervisor, but it's the producer that
   # can actually handle the command.
-  defp pro_pid_from_sup(sup_pid) do
-    {_, pid, _, _} = Supervisor.which_children(sup_pid) |> List.first
+  def get(sup_pid) do
+    children = Supervisor.which_children(sup_pid)
+    child = Enum.find(children, fn({kind, pid, _, _}) -> kind == NSQ.Producer end)
+    {_, pid, _, _} = child
     pid
   end
 

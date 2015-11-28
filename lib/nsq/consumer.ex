@@ -90,8 +90,27 @@ defmodule NSQ.Consumer do
     {:reply, :ok, cons_state}
   end
 
+  @doc """
+  """
+  def handle_call({:update_rdy, conn, count}, _from, cons_state) do
+    {:ok, cons_state} = update_rdy(self, conn, count, cons_state)
+    {:reply, :ok, cons_state}
+  end
+
   def handle_call(:state, _from, state) do
     {:reply, state, state}
+  end
+
+  # ------------------------------------------------------- #
+  # API Definitions                                         #
+  # ------------------------------------------------------- #
+  @doc """
+  This is the standard way to initialize a consumer. It actually initializes a
+  supervisor, but we have it in NSQ.Consumer so end-users don't need to think
+  about that.
+  """
+  def new(topic, channel, config) do
+    NSQ.ConsumerSupervisor.start_link(topic, channel, config)
   end
 
   @spec connections(map) :: {String.t, pid}
@@ -542,5 +561,14 @@ defmodule NSQ.Consumer do
       {:ok, cons_state} = maybe_update_rdy(cons, conn, cons_state)
       connections_maybe_update_rdy(rest, cons, cons_state)
     end
+  end
+
+  # The end-user will be targeting the supervisor, but it's the consumer that
+  # can actually handle the command.
+  def get(sup_pid) do
+    children = Supervisor.which_children(sup_pid)
+    child = Enum.find(children, fn({kind, pid, _, _}) -> kind == NSQ.Consumer end)
+    {_, pid, _, _} = child
+    pid
   end
 end
