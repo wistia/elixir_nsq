@@ -150,7 +150,7 @@ defmodule NSQ.Config do
     end
 
     errors = [no_match_error(
-      config.backoff_strategy, [:exponential, :quick_test]
+      config.backoff_strategy, [:exponential, :test]
     ) | errors]
 
     errors = Enum.reject(errors, fn(v) -> v == nil end)

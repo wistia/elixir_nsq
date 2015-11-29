@@ -335,7 +335,7 @@ defmodule NSQ.Consumer do
   def calculate_backoff(cons_state) do
     case cons_state.config.backoff_strategy do
       :exponential -> exponential_backoff(cons_state)
-      :quick_test -> 200
+      :test -> 200
     end
   end
 
@@ -375,7 +375,16 @@ defmodule NSQ.Consumer do
         Logger.warn("backing off for 1 second")
         {:ok, ons_state} = backoff(cons, 1000, cons_state)
       else
-        conn = Enum.random(connections(cons_state))
+        if cons_state.config.backoff_strategy == :test do
+          # When testing, we're only sending 1 message at a time to a single
+          # nsqd. In this mode, instead of a random connection, always use the
+          # first one that was defined, which ends up being the last one in our
+          # list.
+          conn = cons_state |> connections |> List.last
+        else
+          conn = cons_state |> connections |> Enum.random
+        end
+        IO.puts "chose #{inspect conn}"
         Logger.warn("(#{inspect conn}) backoff timeout expired, sending RDY 1")
 
         # while in backoff only ever let 1 message at a time through

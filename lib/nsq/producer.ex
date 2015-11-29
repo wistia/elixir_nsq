@@ -72,7 +72,7 @@ defmodule NSQ.Producer do
 
   def random_connection_pid(pro, pro_state \\ nil) do
     pro_state = pro_state || get_state(pro)
-    {_child_id, pid} = Enum.shuffle(connections(pro_state)) |> List.first
+    {_child_id, pid} = Enum.random(connections(pro_state))
     pid
   end
 
