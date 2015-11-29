@@ -116,11 +116,15 @@ defmodule NSQ.ConsumerTest do
       backoff_strategy: :test, # fixed 200ms for testing
       max_in_flight: 100,
       nsqds: [{"127.0.0.1", 6750}, {"127.0.0.1", 6760}],
+
+      # This handler should always requeue with backoff twice, then succeed.
+      # This will let us test the full backoff flow: start, continue, and
+      # resume.
       message_handler: fn(_body, _msg) ->
         Agent.update(run_counter, fn(count) -> count + 1 end)
         send(test_pid, :handled)
-        if Agent.get(run_counter, fn(count) -> count end) == 1 do
-          raise "whoops"
+        if Agent.get(run_counter, fn(count) -> count end) < 3 do
+          {:req, 1000, true}
         else
           :ok
         end
@@ -143,8 +147,8 @@ defmodule NSQ.ConsumerTest do
     assert conn2_state.rdy_count == 1
     assert conn2_state.last_rdy == 1
 
-    # A message throws an unhandled exception, so we automatically requeue and
-    # enter into a backoff state.
+    # Our message handler enters into backoff mode and requeues the message
+    # 1 second from now.
     HTTPotion.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
     receive do
       :handled -> :ok
@@ -166,9 +170,33 @@ defmodule NSQ.ConsumerTest do
     assert cons_state.total_rdy_count == 0
 
     # Wait ~200ms for resume to be called, which should put us in "test the
-    # waters" mode. In this mode, one random connection has RDY set to 1. If
-    # it gets a message that succeeds, we leave backoff mode. NSQD will
-    # immediately follow up by sending the message we requeued again.
+    # waters" mode. In this mode, one random connection has RDY set to 1. NSQD
+    # will immediately follow up by sending the message we requeued again.
+    :timer.sleep(250)
+    cons_state = NSQ.Consumer.get_state(consumer)
+    conn1_state = NSQ.Connection.get_state(conn1)
+    conn2_state = NSQ.Connection.get_state(conn2)
+    assert conn1_state.rdy_count + conn2_state.rdy_count == 1
+    assert conn1_state.last_rdy + conn2_state.last_rdy == 1
+    assert cons_state.total_rdy_count == 1
+    receive do
+      :handled -> :ok
+    after
+      5100 -> raise "waited too long for retry to run"
+    end
+
+    # When the message handler fails again, we go back to backoff mode.
+    :timer.sleep(50)
+    cons_state = NSQ.Consumer.get_state(consumer)
+    conn1_state = NSQ.Connection.get_state(conn1)
+    conn2_state = NSQ.Connection.get_state(conn2)
+    assert conn1_state.rdy_count == 0
+    assert conn1_state.last_rdy == 0
+    assert conn2_state.rdy_count == 0
+    assert conn2_state.last_rdy == 0
+    assert cons_state.total_rdy_count == 0
+
+    # Then we'll go into "test the waters mode" again in 200ms.
     :timer.sleep(250)
     cons_state = NSQ.Consumer.get_state(consumer)
     conn1_state = NSQ.Connection.get_state(conn1)
@@ -177,19 +205,31 @@ defmodule NSQ.ConsumerTest do
     assert conn1_state.last_rdy + conn2_state.last_rdy == 1
     assert cons_state.total_rdy_count == 1
 
-    # The default requeue delay on the first attempt will be 2 seconds. After
-    # the message handler runs successfully, we move back to a normal state,
-    # where RDY is distributed evenly among connections.
+    # After the message handler runs successfully, it decrements the
+    # backoff_counter. We need one more successful message to decrement the
+    # counter to 0 and leave backoff mode, so let's send one.
     receive do
       :handled -> :ok
     after
       5100 -> raise "waited too long for retry to run"
     end
-    :timer.sleep(50)
+
+    # Send a successful message and leave backoff mode!
+    HTTPotion.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
+    receive do
+      :handled -> :ok
+    after
+      5100 -> raise "waited too long for retry to run"
+    end
+
+    :timer.sleep(500)
     cons_state = NSQ.Consumer.get_state(consumer)
     conn1_state = NSQ.Connection.get_state(conn1)
+    conn2_state = NSQ.Connection.get_state(conn2)
     assert conn1_state.rdy_count == 50
     assert conn1_state.last_rdy == 50
+    assert conn2_state.rdy_count == 50
+    assert conn2_state.last_rdy == 50
     assert cons_state.total_rdy_count == 100
   end
 end
