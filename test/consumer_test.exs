@@ -166,8 +166,8 @@ defmodule NSQ.ConsumerTest do
     assert conn_state.last_rdy == 1
     assert cons_state.total_rdy_count == 1
 
-    # After the message handler runs successfully, we move back to a normal
-    # state.
+    # The default requeue delay on the first attempt will be 2 seconds. After
+    # the message handler runs successfully, we move back to a normal state.
     receive do
       :handled -> :ok
     end
