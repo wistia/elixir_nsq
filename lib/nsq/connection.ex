@@ -435,7 +435,7 @@ defmodule NSQ.Connection do
   defp update_state_from_cmd(cmd, state) do
     case cmd do
       {:rdy, count} -> update_rdy_count(state, count)
-      true -> state
+      _any -> state
     end
   end
 end
