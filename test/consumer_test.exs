@@ -108,4 +108,74 @@ defmodule NSQ.ConsumerTest do
 
     assert_receive_n_times(:handled, 1000, 2000)
   end
+
+  test "when a message raises an exception, goes through the backoff process" do
+    test_pid = self
+    {:ok, run_counter} = Agent.start_link(fn -> 0 end)
+    {:ok, sup} = NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
+      backoff_strategy: :quick_test, # fixed 200ms for testing
+      max_in_flight: 100,
+      nsqds: [{"127.0.0.1", 6750}],
+      message_handler: fn(_body, _msg) ->
+        Agent.update(run_counter, fn(count) -> count + 1 end)
+        send(test_pid, :handled)
+        if Agent.get(run_counter, fn(count) -> count end) == 1 do
+          raise "whoops"
+        else
+          :ok
+        end
+      end
+    })
+    :timer.sleep(200)
+    consumer = NSQ.Consumer.get(sup)
+    cons_state = NSQ.Consumer.get_state(consumer)
+    [conn] = NSQ.Consumer.connections(cons_state)
+    conn_state = NSQ.Connection.get_state(conn)
+
+    # We're in a normal processing state to start.
+    assert cons_state.total_rdy_count == 1
+    assert cons_state.backoff_counter == 0
+    assert cons_state.backoff_duration == 0
+    assert conn_state.rdy_count == 1
+    assert conn_state.last_rdy == 1
+
+    # A message throws an unhandled exception, so we automatically requeue and
+    # enter into a backoff state.
+    HTTPotion.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
+    receive do
+      :handled -> :ok
+    end
+    :timer.sleep(50)
+
+    # Assert that we're now in backoff mode.
+    cons_state = NSQ.Consumer.get_state(consumer)
+    conn_state = NSQ.Connection.get_state(conn)
+    assert cons_state.backoff_counter == 1
+    assert cons_state.backoff_duration == 200
+    assert conn_state.rdy_count == 0
+    assert conn_state.last_rdy == 0
+    assert cons_state.total_rdy_count == 0
+
+    # Wait ~200ms for resume to be called, which should put us in "test the
+    # waters" mode. NSQD will immediately follow up by sending the message we
+    # requeued again.
+    :timer.sleep(250)
+    cons_state = NSQ.Consumer.get_state(consumer)
+    conn_state = NSQ.Connection.get_state(conn)
+    assert conn_state.rdy_count == 1
+    assert conn_state.last_rdy == 1
+    assert cons_state.total_rdy_count == 1
+
+    # After the message handler runs successfully, we move back to a normal
+    # state.
+    receive do
+      :handled -> :ok
+    end
+    :timer.sleep(50)
+    cons_state = NSQ.Consumer.get_state(consumer)
+    conn_state = NSQ.Connection.get_state(conn)
+    assert conn_state.rdy_count == 100
+    assert conn_state.last_rdy == 100
+    assert cons_state.total_rdy_count == 100
+  end
 end
