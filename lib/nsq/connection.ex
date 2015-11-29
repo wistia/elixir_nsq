@@ -62,9 +62,7 @@ defmodule NSQ.Connection do
         {:ok, socket} ->
           state = %{state | socket: socket}
           {:ok, state} = do_handshake(self, state)
-          reader_pid = spawn_link __MODULE__, :recv_nsq_messages, [socket, self]
-          state = %{state | reader_pid: reader_pid}
-          GenServer.cast(self, :flush_cmd_queue)
+          {:ok, state} = start_receiving_messages(socket, state)
           {:ok, reset_reconnects(state)}
         {:error, reason} ->
           if length(state.config.nsqlookupds) > 0 do
@@ -105,21 +103,13 @@ defmodule NSQ.Connection do
   def handle_call({:cmd, cmd, kind}, {pid, ref} = from, state) do
     if state.socket do
       state = send_data_and_queue_resp(state, cmd, from, kind)
+      state = update_state_from_cmd(cmd, state)
       {:reply, {:ok, ref}, state}
     else
       # Not connected currently; add this call onto a queue to be run as soon
       # as we reconnect.
       state = %{state | cmd_queue: :queue.in({cmd, from, kind}, state.cmd_queue)}
-      {:reply, {:error, :no_socket}, state}
-    end
-  end
-
-  def handle_call({:rdy, count}, _from, state) do
-    if state.socket do
-      :ok = :gen_tcp.send(state.socket, encode({:rdy, count}))
-      {:reply, :ok, update_rdy_count(state, count)}
-    else
-      {:reply, {:error, :no_socket}, state}
+      {:reply, {:queued, :no_socket}, state}
     end
   end
 
@@ -155,12 +145,14 @@ defmodule NSQ.Connection do
       {:message, data} ->
         message = NSQ.Message.from_data(data)
         state = received_message(state)
+        GenServer.cast(state.parent, :received_message)
         message = %NSQ.Message{message |
           connection: self,
           consumer: state.parent,
           socket: socket,
           config: state.config
         }
+        GenServer.cast(state.parent, {:maybe_update_rdy, {state.nsqd, self}, state})
         Task.Supervisor.start_child(
           state.msg_sup_pid, NSQ.Message, :process, [message]
         )
@@ -172,8 +164,8 @@ defmodule NSQ.Connection do
   # When a task is done, it automatically messages the return value to the
   # calling process. we can use that opportunity to update the messages in
   # flight.
-  def handle_info({_ref, {:message_done, _message}}, state) do
-    state = state |> increment_rdy_count |> decrement_messages_in_flight
+  def handle_info({_ref, {:message_done, msg}}, state) do
+    state = state |> decrement_messages_in_flight
     {:noreply, state}
   end
 
@@ -278,7 +270,7 @@ defmodule NSQ.Connection do
 
     # Producers don't have a channel, so they won't do this.
     if channel do
-      conn_state = socket |> subscribe(conn_state)
+      socket |> subscribe(conn_state)
     end
 
     {:ok, conn_state}
@@ -303,16 +295,11 @@ defmodule NSQ.Connection do
     Logger.debug "(#{inspect self}) wait for subscription acknowledgment"
     expected = ok_msg
     {:ok, ^expected} = :gen_tcp.recv(socket, 0)
-
-    Logger.debug("(#{inspect self}) connected, set rdy 1")
-    :gen_tcp.send(socket, encode({:rdy, 1}))
-
-    initial_rdy_count(conn_state)
   end
 
   @doc """
   Calls the command and waits for a response. If a command shouldn't have a
-  response, use cmd_async!
+  response, use cmd_noreply.
   """
   def cmd(conn, cmd, timeout \\ 5000) do
     {:ok, ref} = GenServer.call(conn, {:cmd, cmd, :reply})
@@ -328,8 +315,12 @@ defmodule NSQ.Connection do
   @doc """
   Calls the command as usual but doesn't generate a reply back to the caller.
   """
-  def cmd_async(conn, cmd) do
+  def cmd_noreply(conn, cmd) do
     GenServer.call(conn, {:cmd, cmd, :noreply})
+  end
+
+  def cmd_noresponse(conn, cmd) do
+    GenServer.call(conn, {:cmd, cmd, :noresponse})
   end
 
   def connection_id(parent, {host, port}) do
@@ -376,10 +367,6 @@ defmodule NSQ.Connection do
     %{state | reconnect_attempts: state.reconnect_attempts + 1, socket: nil}
   end
 
-  defp increment_rdy_count(state) do
-    %{state | rdy_count: state.rdy_count + 1}
-  end
-
   defp received_message(state) do
     %{state |
       rdy_count: state.rdy_count - 1,
@@ -418,19 +405,37 @@ defmodule NSQ.Connection do
 
   defp send_data_and_queue_resp(state, cmd, from, kind) do
     :gen_tcp.send(state.socket, encode(cmd))
-    %{state |
-      cmd_resp_queue: :queue.in({cmd, from, kind}, state.cmd_resp_queue)
-    }
+    if kind == :noresponse do
+      state
+    else
+      %{state |
+        cmd_resp_queue: :queue.in({cmd, from, kind}, state.cmd_resp_queue)
+      }
+    end
   end
 
   defp flush_cmd_queue(state) do
     {item, new_queue} = :queue.out(state.cmd_queue)
     case item do
       {:value, {cmd, from, kind}} ->
-        send_data_and_queue_resp(state, cmd, from, kind)
+        state = send_data_and_queue_resp(state, cmd, from, kind)
         flush_cmd_queue(%{state | cmd_queue: new_queue})
       :empty ->
         %{state | cmd_queue: new_queue}
+    end
+  end
+
+  defp start_receiving_messages(socket, state) do
+    reader_pid = spawn_link __MODULE__, :recv_nsq_messages, [socket, self]
+    state = %{state | reader_pid: reader_pid}
+    GenServer.cast(self, :flush_cmd_queue)
+    {:ok, state}
+  end
+
+  defp update_state_from_cmd(cmd, state) do
+    case cmd do
+      {:rdy, count} -> update_rdy_count(state, count)
+      true -> state
     end
   end
 end

@@ -149,6 +149,10 @@ defmodule NSQ.Config do
       end
     end
 
+    errors = [no_match_error(
+      config.backoff_strategy, [:exponential, :quick_test]
+    ) | errors]
+
     errors = Enum.reject(errors, fn(v) -> v == nil end)
 
     if length(errors) > 0 do
@@ -187,6 +191,18 @@ defmodule NSQ.Config do
       val < min -> {:error, "#{val} below minimum #{min}"}
       max != :infinity && val > max -> {:error, "#{val} above maximum #{max}"}
       true -> :ok
+    end
+  end
+
+  defp matches_any?(val, candidates) do
+    Enum.any?(candidates, fn(candidate) -> candidate = val end)
+  end
+
+  defp no_match_error(val, candidates) do
+    if matches_any?(val, candidates) do
+      nil
+    else
+      {:error, "#{val} doesn't match any supported values"}
     end
   end
 end
