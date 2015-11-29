@@ -453,7 +453,6 @@ defmodule NSQ.Consumer do
 
       if remain <= 1 || remain < (last_rdy_count / 4) || (count > 0 && count < remain) do
         Logger.debug("(#{inspect conn}) sending RDY #{count} (#{remain} remain from last RDY #{last_rdy_count})")
-        IO.puts "update_rdy #{cons_state == nil}, #{conn_state == nil}"
         {:ok, _cons_state} = update_rdy(cons, conn, count, cons_state, conn_state)
       else
         Logger.debug("(#{inspect conn}) skip sending RDY #{count} (#{remain} remain out of last RDY #{last_rdy_count})")
