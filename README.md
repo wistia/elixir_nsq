@@ -13,8 +13,8 @@ TODO:
 
 - [ ] RDY redistribution tests
 - [ ] RDY retry tests
-- [ ] Backoff tests
-- [ ] Test message processing concurrency
+- [x] Backoff tests
+- [x] Test message processing concurrency
 - [ ] Test connection failure behavior
 - [ ] Handle errors reported by NSQD
 - [ ] TLS support
