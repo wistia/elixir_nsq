@@ -8,6 +8,7 @@ defmodule NSQ.ConnectionSupervisor do
   # ------------------------------------------------------- #
   # Directives                                              #
   # ------------------------------------------------------- #
+  import NSQ.SharedConnectionInfo
   use Supervisor
 
   def start_link(opts \\ []) do
@@ -25,9 +26,10 @@ defmodule NSQ.ConnectionSupervisor do
       nsqd,
       parent_state.config,
       parent_state.topic,
-      parent_state.channel
+      parent_state.channel,
+      parent_state.shared_conn_info_agent
     ]
-    conn_id = NSQ.Connection.connection_id(parent, nsqd)
+    conn_id = get_conn_id(parent, nsqd)
 
     # When using nsqlookupd, we expect connections will be naturally
     # rediscovered if they fail. When using nsqd directly, we don't have any

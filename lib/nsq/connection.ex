@@ -15,6 +15,7 @@ defmodule NSQ.Connection do
   require Logger
   use Connection
   import NSQ.Protocol
+  import NSQ.SharedConnectionInfo
 
   # ------------------------------------------------------- #
   # Module Attributes                                       #
@@ -36,12 +37,10 @@ defmodule NSQ.Connection do
     channel: nil,
     backoff_counter: 0,
     backoff_duration: 0,
-    rdy_count: 0,
-    last_rdy: 0,
     max_rdy: 2500,
-    last_msg_timestamp: :calendar.datetime_to_gregorian_seconds(:calendar.universal_time),
     reconnect_attempts: 0,
-    stop_flag: false
+    stop_flag: false,
+    shared_conn_info_agent: nil
   }
 
   # ------------------------------------------------------- #
@@ -49,6 +48,7 @@ defmodule NSQ.Connection do
   # ------------------------------------------------------- #
   def init(conn_state) do
     {:ok, msg_sup_pid} = Task.Supervisor.start_link(strategy: :one_for_one)
+    init_conn_info(conn_state)
     {:connect, nil, %{conn_state | msg_sup_pid: msg_sup_pid}}
   end
 
@@ -145,14 +145,13 @@ defmodule NSQ.Connection do
       {:message, data} ->
         message = NSQ.Message.from_data(data)
         state = received_message(state)
-        GenServer.cast(state.parent, :received_message)
         message = %NSQ.Message{message |
           connection: self,
           consumer: state.parent,
           socket: socket,
           config: state.config
         }
-        GenServer.cast(state.parent, {:maybe_update_rdy, {state.nsqd, self}, state})
+        GenServer.cast(state.parent, {:maybe_update_rdy, state.nsqd})
         Task.Supervisor.start_child(
           state.msg_sup_pid, NSQ.Message, :process, [message]
         )
@@ -176,13 +175,14 @@ defmodule NSQ.Connection do
   # ------------------------------------------------------- #
   # API Definitions                                         #
   # ------------------------------------------------------- #
-  def start_link(parent, nsqd, config, topic, channel, opts \\ []) do
+  def start_link(parent, nsqd, config, topic, channel, shared_conn_info_agent, opts \\ []) do
     state = %{@initial_state |
       parent: parent,
       nsqd: nsqd,
       config: config,
       topic: topic,
-      channel: channel
+      channel: channel,
+      shared_conn_info_agent: shared_conn_info_agent
     }
     {:ok, _pid} = Connection.start_link(__MODULE__, state, opts)
   end
@@ -323,10 +323,6 @@ defmodule NSQ.Connection do
     GenServer.call(conn, {:cmd, cmd, :noresponse})
   end
 
-  def connection_id(parent, {host, port}) do
-    "parent:#{inspect parent}:conn:#{host}:#{port}"
-  end
-
   # ------------------------------------------------------- #
   # Private Functions                                       #
   # ------------------------------------------------------- #
@@ -368,23 +364,26 @@ defmodule NSQ.Connection do
   end
 
   defp received_message(state) do
-    %{state |
-      rdy_count: state.rdy_count - 1,
-      messages_in_flight: state.messages_in_flight + 1,
-      last_msg_timestamp: now
-    }
+    update_conn_info state, fn(info) ->
+      %{info |
+        rdy_count: info.rdy_count - 1,
+        messages_in_flight: info.messages_in_flight + 1,
+        last_msg_timestamp: now
+      }
+    end
+    state
   end
 
   defp decrement_messages_in_flight(state) do
-    %{state | messages_in_flight: state.messages_in_flight - 1}
-  end
-
-  defp initial_rdy_count(state) do
-    %{state | rdy_count: 1, last_rdy: 1}
+    update_conn_info state, fn(info) ->
+      %{info | messages_in_flight: info.messages_in_flight - 1}
+    end
+    state
   end
 
   defp update_rdy_count(state, rdy_count) do
-    %{state | rdy_count: rdy_count, last_rdy: rdy_count}
+    update_conn_info(state, %{rdy_count: rdy_count, last_rdy: rdy_count})
+    state
   end
 
   defp should_attempt_connection?(state) do
@@ -437,5 +436,15 @@ defmodule NSQ.Connection do
       {:rdy, count} -> update_rdy_count(state, count)
       _any -> state
     end
+  end
+
+  defp init_conn_info(state) do
+    update_conn_info state, %{
+      max_rdy: state.max_rdy,
+      rdy_count: 0,
+      last_rdy: 0,
+      messages_in_flight: 0,
+      last_msg_timestamp: now
+    }
   end
 end

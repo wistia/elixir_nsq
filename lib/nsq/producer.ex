@@ -13,7 +13,8 @@ defmodule NSQ.Producer do
     topic: nil,
     channel: nil,
     conn_sup_pid: nil,
-    config: nil
+    config: nil,
+    shared_conn_info_agent: nil
   }
 
   # ------------------------------------------------------- #
@@ -22,6 +23,10 @@ defmodule NSQ.Producer do
   def init(pro_state) do
     {:ok, conn_sup_pid} = NSQ.ConnectionSupervisor.start_link
     pro_state = %{pro_state | conn_sup_pid: conn_sup_pid}
+
+    {:ok, shared_conn_info_agent} = Agent.start_link(fn -> %{} end)
+    pro_state = %{pro_state | shared_conn_info_agent: shared_conn_info_agent}
+
     {:ok, _pro_state} = connect_to_nsqds(pro_state.config.nsqds, self, pro_state)
   end
 
@@ -60,19 +65,19 @@ defmodule NSQ.Producer do
     GenServer.start_link(__MODULE__, state)
   end
 
-  def connections(pro_state) when is_map(pro_state) do
+  def get_connections(pro_state) when is_map(pro_state) do
     children = Supervisor.which_children(pro_state.conn_sup_pid)
     Enum.map children, fn({child_id, pid, _, _}) -> {child_id, pid} end
   end
 
-  def connections(pro, pro_state \\ nil) when is_pid(pro) do
+  def get_connections(pro, pro_state \\ nil) when is_pid(pro) do
     pro_state = pro_state || get_state(pro)
     Supervisor.which_children(pro_state.conn_sup_pid)
   end
 
   def random_connection_pid(pro, pro_state \\ nil) do
     pro_state = pro_state || get_state(pro)
-    {_child_id, pid} = Enum.random(connections(pro_state))
+    {_child_id, pid} = Enum.random(get_connections(pro_state))
     pid
   end
 
