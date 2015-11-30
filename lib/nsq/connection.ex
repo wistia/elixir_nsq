@@ -444,7 +444,8 @@ defmodule NSQ.Connection do
       rdy_count: 0,
       last_rdy: 0,
       messages_in_flight: 0,
-      last_msg_timestamp: now
+      last_msg_timestamp: now,
+      retry_rdy_pid: nil
     }
   end
 end

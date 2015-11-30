@@ -15,7 +15,6 @@ defmodule NSQ.Consumer do
     max_in_flight: 2500,
     topic: nil,
     message_handler: nil,
-    rdy_retry_conns: %{},
     need_rdy_redistributed: false,
     stop_flag: false,
     backoff_counter: 0,
@@ -503,15 +502,13 @@ defmodule NSQ.Consumer do
     if count > conn_info.max_rdy, do: count = conn_info.max_rdy
 
     # If this is for a connection that's retrying, kill the timer and clean up.
-    if retry_pid = cons_state.rdy_retry_conns[conn] do
+    if retry_pid = conn_info.retry_rdy_pid do
       if Process.alive?(retry_pid) do
-        Logger.warn("(#{inspect conn}) rdy retry pid #{inspect retry_pid} detected, killing")
+        Logger.debug("(#{inspect conn}) rdy retry pid #{inspect retry_pid} detected, killing")
         Process.exit(retry_pid, :normal)
       end
 
-      cons_state = %{cons_state |
-        rdy_retry_conns: Map.delete(cons_state.rdy_retry_conns, conn)
-      }
+      update_conn_info(cons_state, get_conn_id(conn), %{retry_rdy_pid: nil})
     end
 
     rdy_count = conn_info.rdy_count
@@ -545,9 +542,9 @@ defmodule NSQ.Consumer do
       :timer.sleep(delay)
       GenServer.call(cons, {:update_rdy, conn, count})
     end
-    rdy_retry_conns = Map.put(cons_state.rdy_retry_conns, conn, retry_pid)
+    update_conn_info(cons_state, get_conn_id(conn), %{retry_rdy_pid: retry_pid})
 
-    {:ok, %{cons_state | rdy_retry_conns: rdy_retry_conns}}
+    {:ok, cons_state}
   end
 
   def send_rdy(cons, {_id, pid} = conn, count, cons_state \\ nil) do

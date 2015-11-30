@@ -238,16 +238,16 @@ defmodule NSQ.ConsumerTest do
     HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
     refute_receive :handled, 500
     cons_state = Cons.get_state(cons)
-    assert Dict.size(cons_state.rdy_retry_conns) == 0
+    assert fetch_conn_info(cons_state, conn, :retry_rdy_pid) == nil
 
     Cons.update_rdy(cons, conn, 1)
     refute_receive :handled, 500
     cons_state = Cons.get_state(cons)
-    assert Dict.size(cons_state.rdy_retry_conns) == 1
+    assert fetch_conn_info(cons_state, conn, :retry_rdy_pid) |> is_pid
 
     Cons.change_max_in_flight(cons_sup_pid, 1)
     assert_receive :handled, 500
     cons_state = Cons.get_state(cons)
-    assert Dict.size(cons_state.rdy_retry_conns) == 0
+    assert fetch_conn_info(cons_state, conn, :retry_rdy_pid) == nil
   end
 end
