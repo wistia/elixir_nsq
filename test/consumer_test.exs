@@ -217,4 +217,37 @@ defmodule NSQ.ConsumerTest do
     [50, 50] = fetch_conn_info(cons_state, conn2, [:rdy_count, :last_rdy])
     assert Cons.total_rdy_count(cons_state) == 100
   end
+
+  test "retry_rdy flow" do
+    # Easiest way to trigger this flow is for max_possible_rdy to be 0, then
+    # try to send RDY 1. That will trigger a retry, after which we can change
+    # the max in flight so it succeeds next time.
+    test_pid = self
+    {:ok, cons_sup_pid} = Cons.new(@test_topic, @test_channel1, %NSQ.Config{
+      nsqds: [{"127.0.0.1", 6750}],
+      max_in_flight: 0,
+      rdy_retry_delay: 300,
+      message_handler: fn(body, _msg) ->
+        send(test_pid, :handled)
+        :ok
+      end
+    })
+    cons = Cons.get(cons_sup_pid)
+    [conn] = Cons.get_connections(cons)
+
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
+    refute_receive :handled, 500
+    cons_state = Cons.get_state(cons)
+    assert Dict.size(cons_state.rdy_retry_conns) == 0
+
+    Cons.update_rdy(cons, conn, 1)
+    refute_receive :handled, 500
+    cons_state = Cons.get_state(cons)
+    assert Dict.size(cons_state.rdy_retry_conns) == 1
+
+    Cons.change_max_in_flight(cons_sup_pid, 1)
+    assert_receive :handled, 500
+    cons_state = Cons.get_state(cons)
+    assert Dict.size(cons_state.rdy_retry_conns) == 0
+  end
 end

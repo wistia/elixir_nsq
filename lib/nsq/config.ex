@@ -55,6 +55,9 @@ defmodule NSQ.Config do
     # Duration between redistributing max-in-flight to connections
     rdy_redistribute_interval: 5 * @seconds,
 
+    # Duration to wait to retry RDY, if conn is maxed out
+    rdy_retry_delay: 5 * @seconds,
+
     # Identifiers sent to nsqd representing this client UserAgent is in the
     # spirit of HTTP (default: "<client_library_name>/<version>")
     client_id: nil,
