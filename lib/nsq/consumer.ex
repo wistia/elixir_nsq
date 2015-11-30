@@ -327,7 +327,7 @@ defmodule NSQ.Consumer do
           {:ok, new_state} = update_rdy(cons, conn, 0, last_state)
           new_state
         end
-        backoff(cons, backoff_duration, cons_state)
+        resume_from_backoff_later(cons, backoff_duration, cons_state)
       true ->
         {:ok, cons_state}
     end
@@ -351,7 +351,7 @@ defmodule NSQ.Consumer do
 
   @doc """
   """
-  def backoff(cons, duration, cons_state \\ nil) do
+  def resume_from_backoff_later(cons, duration, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
     spawn_link fn ->
       :timer.sleep(duration)
@@ -362,7 +362,12 @@ defmodule NSQ.Consumer do
     {:ok, cons_state}
   end
 
-  # TODO: Test and doc
+  @doc """
+  This function is called asynchronously from `resume_from_backoff_later`. It
+  will cause one connection to have RDY 1. We only resume after this if
+  messages succeed a number of times == backoff_counter. (That logic is in
+  start_stop_continue_backoff.)
+  """
   def resume(cons, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
     if cons_state.backoff_duration == 0 || cons_state.backoff_counter == 0 do
@@ -378,7 +383,7 @@ defmodule NSQ.Consumer do
         if conn_count == 0 do
           Logger.warn("no connection available to resume")
           Logger.warn("backing off for 1 second")
-          {:ok, ons_state} = backoff(cons, 1000, cons_state)
+          {:ok, ons_state} = resume_from_backoff_later(cons, 1000, cons_state)
         else
           if cons_state.config.backoff_strategy == :test do
             # When testing, we're only sending 1 message at a time to a single
