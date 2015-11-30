@@ -487,7 +487,7 @@ defmodule NSQ.Consumer do
     # If this is for a connection that's retrying, kill the timer and clean up.
     if retry_pid = cons_state.rdy_retry_conns[conn] do
       Logger.debug("#{inspect conn} rdy retry pid #{inspect retry_pid} detected, killing")
-      Process.exit(retry_pid, :kill)
+      Process.exit(retry_pid, :normal)
       cons_state = %{cons_state |
         rdy_retry_conns: Map.delete(cons_state.rdy_retry_conns, conn)
       }
