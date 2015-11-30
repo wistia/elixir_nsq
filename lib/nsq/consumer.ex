@@ -212,7 +212,8 @@ defmodule NSQ.Consumer do
     # messages.
     remaining_rdy = cons_state.max_in_flight - total_rdy_count(cons_state)
     if remaining_rdy > 0 do
-      {:ok, cons_state} = send_rdy(cons, {nsqd, pid}, 1, cons_state)
+      conn = conn_from_nsqd(cons, nsqd, cons_state)
+      {:ok, cons_state} = send_rdy(cons, conn, 1, cons_state)
     end
 
     {:ok, cons_state}
