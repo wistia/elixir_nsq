@@ -111,6 +111,7 @@ config = %NSQ.Config{
 
     Consumer Supervisor
       Consumer
+        ConnectionInfo Agent
         ConnectionSupervisor
           Connection
             Task.Supervisor
@@ -125,6 +126,7 @@ config = %NSQ.Config{
 
     Producer Supervisor
       Producer
+        ConnectionInfo Agent
         ConnectionSupervisor
           Connection
           Connection
