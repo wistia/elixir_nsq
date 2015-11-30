@@ -64,6 +64,8 @@ defmodule NSQ.Consumer do
     {:ok, shared_conn_info_agent} = Agent.start_link(fn -> %{} end)
     cons_state = %{cons_state | shared_conn_info_agent: shared_conn_info_agent}
 
+    cons_state = %{cons_state | max_in_flight: cons_state.config.max_in_flight}
+
     {:ok, _cons_state} = connect_to_nsqds_on_init(self, cons_state)
   end
 
@@ -104,6 +106,12 @@ defmodule NSQ.Consumer do
 
   def handle_call(:state, _from, state) do
     {:reply, state, state}
+  end
+
+  def handle_call({:max_in_flight, new_max_in_flight}, _from, state) do
+    state = %{state | max_in_flight: new_max_in_flight}
+
+    {:reply, :ok, state}
   end
 
   def handle_cast(:resume, state) do
@@ -558,6 +566,11 @@ defmodule NSQ.Consumer do
 
   def total_rdy_count(%{shared_conn_info_agent: agent_pid} = _cons_state) do
     total_rdy_count(agent_pid)
+  end
+
+  def change_max_in_flight(sup_pid, new_max_in_flight) do
+    cons = get(sup_pid)
+    GenServer.call(cons, {:max_in_flight, new_max_in_flight})
   end
 
   # ------------------------------------------------------- #

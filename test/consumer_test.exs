@@ -15,7 +15,6 @@ defmodule NSQ.ConsumerTest do
     :ok
   end
 
-
   test "#new establishes a connection to NSQ and processes messages" do
     test_pid = self
     NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
