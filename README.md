@@ -11,7 +11,7 @@ See these resources for more info on building client libraries:
 
 TODO:
 
-- [ ] RDY redistribution tests
+- [x] RDY redistribution tests
 - [x] RDY retry tests
 - [x] Backoff tests
 - [x] Test message processing concurrency
