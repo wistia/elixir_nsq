@@ -15,7 +15,12 @@ TODO:
 - [x] RDY retry tests
 - [x] Backoff tests
 - [x] Test message processing concurrency
+- [x] Test discovery via nsqlookupd for consumers
 - [ ] Test connection failure behavior
+- [ ] Set connection's max_rdy from IDENTIFY result
+- [ ] Graceful connection closing
+- [ ] Respect configured read_timeout
+- [ ] Respect configured write_timeout
 - [ ] Handle errors reported by NSQD
 - [ ] TLS support
 - [ ] Auth support
