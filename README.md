@@ -9,7 +9,7 @@ See these resources for more info on building client libraries:
 - [http://nsq.io/clients/building_client_libraries.html](http://nsq.io/clients/building_client_libraries.html)
 - [http://nsq.io/clients/tcp_protocol_spec.html](http://nsq.io/clients/tcp_protocol_spec.html)
 
-TODO:
+### TODO:
 
 - [x] RDY redistribution tests
 - [x] RDY retry tests
