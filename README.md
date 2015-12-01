@@ -16,7 +16,7 @@ TODO:
 - [x] Backoff tests
 - [x] Test message processing concurrency
 - [x] Test discovery via nsqlookupd for consumers
-- [ ] Test connection failure behavior
+- [x] Test connection failure behavior
 - [ ] Set connection's max_rdy from IDENTIFY result
 - [ ] Graceful connection closing
 - [ ] Respect configured read_timeout
