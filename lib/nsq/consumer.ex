@@ -449,9 +449,9 @@ defmodule NSQ.Consumer do
       possible_conns = Enum.map conns, fn(conn) ->
         conn_id = get_conn_id(conn)
         [last_msg_t, rdy_count] = fetch_conn_info(cons_state, conn_id, [:last_msg_timestamp, :rdy_count])
-        time_since_last_msg = now - last_msg_t
+        time_since_last_msg = 1000 * (now - last_msg_t)
 
-        Logger.debug("(#{inspect conn}) rdy: #{rdy_count} (last message received #{inspect datetime_from_timestamp(time_since_last_msg)})")
+        Logger.debug("(#{inspect conn}) rdy: #{rdy_count} (last message received #{inspect datetime_from_timestamp(time_since_last_msg / 1000 |> round)})")
         if rdy_count > 0 && time_since_last_msg > cons_state.config.low_rdy_idle_timeout do
           Logger.debug("(#{inspect conn}) idle connection, giving up RDY")
           {:ok, _cons_state} = update_rdy(cons, conn, 0, cons_state)

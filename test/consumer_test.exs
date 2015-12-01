@@ -219,9 +219,10 @@ defmodule NSQ.ConsumerTest do
   end
 
   test "retry_rdy flow" do
-    # Easiest way to trigger this flow is for max_possible_rdy to be 0, then
-    # try to send RDY 1. That will trigger a retry, after which we can change
-    # the max in flight so it succeeds next time.
+    # Easiest way to trigger this flow is for max_in_flight to be 0, then try
+    # to send RDY 1. That will trigger a retry, after which we can change the
+    # max_in_flight so it succeeds next time.
+
     test_pid = self
     {:ok, cons_sup_pid} = Cons.new(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
@@ -249,5 +250,42 @@ defmodule NSQ.ConsumerTest do
     assert_receive :handled, 500
     cons_state = Cons.get_state(cons)
     assert fetch_conn_info(cons_state, conn, :retry_rdy_pid) == nil
+  end
+
+  test "rdy redistribution when number of connections > max in flight" do
+    test_pid = self
+    {:ok, cons_sup_pid} = Cons.new(@test_topic, @test_channel1, %NSQ.Config{
+      nsqds: [{"127.0.0.1", 6750}, {"127.0.0.1", 6760}],
+      rdy_redistribute_interval: 500,
+      low_rdy_idle_timeout: 1000,
+      max_in_flight: 1,
+      message_handler: fn(_body, _msg) ->
+        send(test_pid, :handled)
+        :ok
+      end
+    })
+    cons = Cons.get(cons_sup_pid)
+    cons_state = Cons.get_state(cons)
+    [conn1, conn2] = Cons.get_connections(cons)
+    assert Cons.total_rdy_count(cons_state) == 1
+    assert 1 == fetch_conn_info(cons_state, conn1, :rdy_count) +
+      fetch_conn_info(cons_state, conn2, :rdy_count)
+    :timer.sleep(1500)
+
+    IO.puts "Letting RDY redistribute 10 times..."
+    {conn1_rdy, conn2_rdy} = Enum.reduce 1..10, {0, 0}, fn(i, {rdy1, rdy2}) ->
+      :timer.sleep(1000)
+      IO.puts i
+      {
+        rdy1 + fetch_conn_info(cons_state, conn1, :rdy_count),
+        rdy2 + fetch_conn_info(cons_state, conn2, :rdy_count)
+      }
+    end
+
+    IO.puts "Distribution: #{conn1_rdy} : #{conn2_rdy}"
+    assert conn1_rdy > 0
+    assert conn2_rdy > 0
+    assert conn1_rdy + conn2_rdy == 10
+    assert abs(conn1_rdy - conn2_rdy) < 6
   end
 end
