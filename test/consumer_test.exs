@@ -97,7 +97,7 @@ defmodule NSQ.ConsumerTest do
     test_pid = self
     NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
-      message_handler: fn(body, _msg) ->
+      message_handler: fn(_body, _msg) ->
         :timer.sleep(1000)
         send(test_pid, :handled)
         :ok
@@ -228,7 +228,7 @@ defmodule NSQ.ConsumerTest do
       nsqds: [{"127.0.0.1", 6750}],
       max_in_flight: 0,
       rdy_retry_delay: 300,
-      message_handler: fn(body, _msg) ->
+      message_handler: fn(_body, _msg) ->
         send(test_pid, :handled)
         :ok
       end

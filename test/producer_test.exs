@@ -61,7 +61,7 @@ defmodule NSQ.ProducerTest do
     {:ok, bodies} = Agent.start_link(fn -> [] end)
     NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: @configured_nsqds,
-      message_handler: fn(body, msg) ->
+      message_handler: fn(body, _msg) ->
         Agent.update bodies, fn(list) -> [body|list] end
         send(test_pid, :handled)
         :ok
