@@ -12,6 +12,9 @@ defmodule NSQ.ConsumerTest do
   setup do
     Logger.configure(level: :warn)
     HTTP.post("http://127.0.0.1:6751/topic/delete?topic=#{@test_topic}")
+    HTTP.post("http://127.0.0.1:6761/topic/delete?topic=#{@test_topic}")
+    HTTP.post("http://127.0.0.1:6771/topic/delete?topic=#{@test_topic}")
+    HTTP.post("http://127.0.0.1:6781/topic/delete?topic=#{@test_topic}")
     :ok
   end
 
