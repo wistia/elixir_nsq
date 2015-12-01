@@ -18,6 +18,27 @@ defmodule NSQ.ConsumerTest do
     :ok
   end
 
+  test "discovery via nsqlookupd" do
+    test_pid = self
+    {:ok, cons_sup_pid} = NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
+      lookupd_poll_interval: 500,
+      nsqlookupds: ["127.0.0.1:6771", "127.0.0.1:6781"],
+      message_handler: fn(body, msg) ->
+        assert body == "HTTP message"
+        assert msg.attempts == 1
+        send(test_pid, :handled)
+        :ok
+      end
+    })
+
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
+    HTTP.post("http://127.0.0.1:6761/put?topic=#{@test_topic}", [body: "HTTP message"])
+
+    cons = Cons.get(cons_sup_pid)
+    assert_receive(:handled, 2000)
+    assert_receive(:handled, 2000)
+  end
+
   test "#new establishes a connection to NSQ and processes messages" do
     test_pid = self
     NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
@@ -36,7 +57,6 @@ defmodule NSQ.ConsumerTest do
     HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
     assert_receive(:handled, 2000)
   end
-
 
   test "#new exits when given a bad address and not able to reconnect" do
     test_pid = self
