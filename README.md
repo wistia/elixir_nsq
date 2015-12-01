@@ -25,6 +25,7 @@ TODO:
 - [ ] TLS support
 - [ ] Auth support
 - [ ] Delegates
+- [ ] Include Procfile for running nsqd/nsqlookupd for tests
 
 ## Publish Messages
 
