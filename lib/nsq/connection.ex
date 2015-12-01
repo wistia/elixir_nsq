@@ -231,6 +231,8 @@ defmodule NSQ.Connection do
           else
             %{status_code: 200, status_txt: "OK", data: body}
           end
+        %HTTPotion.Response{status_code: 404} ->
+          %{}
         %HTTPotion.Response{status_code: status, body: body} ->
           Logger.error "Unexpected status code from #{lookupd_url}: #{status}"
           %{status_code: status, status_txt: nil, data: body}
