@@ -114,7 +114,7 @@ defmodule NSQ.SharedConnectionInfo do
   Delete connection info matching `conn_id`. This should be called when a
   connection is terminated.
   """
-  def delete_conn_info(agent_pid, conn_id) do
+  def delete_conn_info(agent_pid, conn_id) when is_pid(agent_pid) do
     Agent.update(agent_pid, fn(data) -> Dict.delete(data, conn_id) end)
   end
 

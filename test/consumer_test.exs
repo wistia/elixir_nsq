@@ -3,7 +3,9 @@ defmodule NSQ.ConsumerTest do
   doctest NSQ.Consumer
   alias NSQ.Consumer, as: Cons
   alias HTTPotion, as: HTTP
+  alias NSQ.Connection, as: Conn
   import NSQ.SharedConnectionInfo
+  require Logger
 
   @test_topic "__nsq_consumer_test_topic__"
   @test_channel1 "__nsq_consumer_test_channel1__"
@@ -16,6 +18,67 @@ defmodule NSQ.ConsumerTest do
     HTTP.post("http://127.0.0.1:6771/topic/delete?topic=#{@test_topic}")
     HTTP.post("http://127.0.0.1:6781/topic/delete?topic=#{@test_topic}")
     :ok
+  end
+
+  test "a connection is terminated, cleaned up, and restarted when the tcp connection closes" do
+    test_pid = self
+    {:ok, cons_sup_pid} = NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
+      lookupd_poll_interval: 500,
+      nsqds: [{"127.0.0.1", 6750}],
+      message_handler: fn(body, msg) ->
+        send(test_pid, :handled)
+        :ok
+      end
+    })
+
+    # Send a message so we can be sure the connection is up and working first.
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
+    assert_receive(:handled, 2000)
+
+    # Abruptly close the connection
+    cons = Cons.get(cons_sup_pid)
+    [conn1] = Cons.get_connections(cons)
+    conn_state = Conn.get_state(conn1)
+
+    Logger.warn "Closing socket as part of test..."
+    :gen_tcp.close(conn_state.socket)
+
+    # Immediately after closing, a connection is still reported.
+    assert length(Cons.get_connections(cons)) == 1
+
+    # Wait for the lookupd loop to run again, at which point it will remove the
+    # dead connection and spawn a new one.
+    :timer.sleep(500)
+    assert length(Cons.get_connections(cons)) == 0
+
+    # Wait for the new connection to come up. It should be different from the
+    # old one.
+    :timer.sleep(1000)
+    [conn2] = Cons.get_connections(cons)
+    assert conn1 != conn2
+
+    # Send another message so we can verify the new connection is working.
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
+    assert_receive(:handled, 2000)
+  end
+
+  test "establishes a connection to NSQ and processes messages" do
+    test_pid = self
+    NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
+      nsqds: [{"127.0.0.1", 6750}],
+      message_handler: fn(body, msg) ->
+        assert body == "HTTP message"
+        assert msg.attempts == 1
+        send(test_pid, :handled)
+        :ok
+      end
+    })
+
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
+    assert_receive(:handled, 2000)
+
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
+    assert_receive(:handled, 2000)
   end
 
   test "discovery via nsqlookupd" do
@@ -36,25 +99,6 @@ defmodule NSQ.ConsumerTest do
 
     cons = Cons.get(cons_sup_pid)
     assert_receive(:handled, 2000)
-    assert_receive(:handled, 2000)
-  end
-
-  test "#new establishes a connection to NSQ and processes messages" do
-    test_pid = self
-    NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
-      nsqds: [{"127.0.0.1", 6750}],
-      message_handler: fn(body, msg) ->
-        assert body == "HTTP message"
-        assert msg.attempts == 1
-        send(test_pid, :handled)
-        :ok
-      end
-    })
-
-    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
-    assert_receive(:handled, 2000)
-
-    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
     assert_receive(:handled, 2000)
   end
 

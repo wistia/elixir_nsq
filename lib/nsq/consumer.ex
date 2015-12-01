@@ -82,13 +82,9 @@ defmodule NSQ.Consumer do
   connections. Started from the supervisor.
   """
   def handle_call(:discover_nsqds, _from, cons_state) do
-    if length(cons_state.config.nsqlookupds) > 0 do
-      {:ok, cons_state} = discover_nsqds_and_connect(self, cons_state)
-      {:reply, :ok, cons_state}
-    else
-      # No nsqlookupds are configured. They must be specifying nsqds directly.
-      {:reply, :ok, cons_state}
-    end
+    {:ok, cons_state} = delete_dead_connections(cons_state)
+    {:ok, cons_state} = discover_nsqds_and_connect(self, cons_state)
+    {:reply, :ok, cons_state}
   end
 
   def handle_call({:start_stop_continue_backoff, backoff_flag}, _from, cons_state) do
@@ -166,15 +162,22 @@ defmodule NSQ.Consumer do
   def discover_nsqds_and_connect(cons, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
 
-    if length(cons_state.config.nsqlookupds) > 0 do
-      nsqds = NSQ.Connection.nsqds_from_lookupds(
-        cons_state.config.nsqlookupds, cons_state.topic
-      )
-      Logger.debug "Discovered nsqds: #{inspect nsqds}"
-      {:ok, cons_state} = update_connections(nsqds, cons, cons_state)
-    else
-      {:error, "No nsqlookupds given"}
+    nsqds = cond do
+      length(cons_state.config.nsqlookupds) > 0 ->
+        Logger.debug "(#{inspect self}) Discovering nsqds via nsqlookupds #{inspect cons_state.config.nsqlookupds}"
+        NSQ.Connection.nsqds_from_lookupds(
+          cons_state.config.nsqlookupds, cons_state.topic
+        )
+
+      length(cons_state.config.nsqds) > 0 ->
+        Logger.debug "(#{inspect self}) Using configured nsqds #{inspect cons_state.config.nsqds}"
+        cons_state.config.nsqds
+
+      true ->
+        raise "No nsqds or nsqlookupds are configured"
     end
+
+    {:ok, _cons_state} = update_connections(nsqds, cons, cons_state)
   end
 
   @spec update_connections([{String.t, integer}], Struct.t, map) :: {:ok, map}
@@ -237,17 +240,29 @@ defmodule NSQ.Consumer do
 
   def stop_connection(cons, nsqd, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
-    Logger.warn "stop connection #{inspect nsqd}"
-
-    # Delete the connection info from the shared map so we don't use it to
-    # perform calculations.
-    conn_id = get_conn_id(cons, nsqd)
-    delete_conn_info(cons_state, conn_id)
 
     # Terminate the connection for real.
     # TODO: Change this method to `kill_connection` and make `stop_connection`
     # graceful.
+    conn_id = get_conn_id(cons, nsqd)
     Supervisor.terminate_child(cons_state.conn_sup_pid, conn_id)
+    {:ok, cons_state} = cleanup_connection(cons, nsqd, cons_state)
+
+    {:ok, cons_state}
+  end
+
+  def cleanup_connection(cons, nsqd, cons_state \\ nil) do
+    cons_state = cons_state || get_state(cons)
+
+    conn_id = get_conn_id(cons, nsqd)
+
+    # If a connection is terminated normally or non-normally, it will still be
+    # listed in the supervision tree. Let's remove it when we clean up.
+    Supervisor.delete_child(cons_state.conn_sup_pid, conn_id)
+
+    # Delete the connection info from the shared map so we don't use it to
+    # perform calculations.
+    delete_conn_info(cons_state, conn_id)
 
     {:ok, cons_state}
   end
@@ -584,6 +599,15 @@ defmodule NSQ.Consumer do
   def change_max_in_flight(sup_pid, new_max_in_flight) do
     cons = get(sup_pid)
     GenServer.call(cons, {:max_in_flight, new_max_in_flight})
+  end
+
+  def delete_dead_connections(state) do
+    Enum.map get_connections(state), fn({conn_id, pid} = conn) ->
+      unless Process.alive?(pid) do
+        Supervisor.delete_child(state.conn_sup_pid, conn_id)
+      end
+    end
+    {:ok, state}
   end
 
   # ------------------------------------------------------- #

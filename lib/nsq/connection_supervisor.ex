@@ -32,13 +32,8 @@ defmodule NSQ.ConnectionSupervisor do
     conn_id = get_conn_id(parent, nsqd)
 
     # When using nsqlookupd, we expect connections will be naturally
-    # rediscovered if they fail. When using nsqd directly, we don't have any
-    # recourse, so might as well try restarting the connection if it fails.
-    if length(parent_state.config.nsqlookupds) > 0 do
-      opts = [restart: :temporary, id: conn_id] ++ opts
-    else
-      opts = [restart: :permanent, id: conn_id] ++ opts
-    end
+    # rediscovered if they fail.
+    opts = [restart: :temporary, id: conn_id] ++ opts
 
     child = worker(NSQ.Connection, args, opts)
     Supervisor.start_child(conn_sup_pid, child)
