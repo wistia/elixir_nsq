@@ -20,6 +20,25 @@ defmodule NSQ.Consumer do
     backoff_counter: 0,
     backoff_duration: 0
   }
+  # ------------------------------------------------------- #
+  # Type Definitions                                        #
+  # ------------------------------------------------------- #
+  @typedoc """
+  A tuple with a host and a port.
+  """
+  @type host_with_port :: {String.t, integer}
+
+  @typedoc """
+  A tuple with a string ID (used to target the connection in
+  NSQ.ConnectionSupervisor) and a PID of the connection.
+  """
+  @type connection :: {String.t, pid}
+
+  @typedoc """
+  A map, but we can be more specific by asserting some entries that should be
+  set for a connection's state map.
+  """
+  @type cons_state :: %{conn_sup_pid: pid, config: NSQ.Config.t, shared_conn_info_agent: pid}
 
   # ------------------------------------------------------- #
   # Behaviour Implementation                                #
@@ -29,6 +48,7 @@ defmodule NSQ.Consumer do
   supervisor, but we have it in NSQ.Consumer so end-users don't need to think
   about that.
   """
+  @spec new(String.t, String.t, NSQ.Config.t) :: {:ok, pid}
   def new(topic, channel, config) do
     NSQ.ConsumerSupervisor.start_link(topic, channel, config)
   end
@@ -36,7 +56,7 @@ defmodule NSQ.Consumer do
   @doc """
   Starts a Consumer process, called via the supervisor.
   """
-  @spec start_link(String.t, String.t, Struct.t) :: {:ok, pid}
+  @spec start_link(String.t, String.t, NSQ.Config.t, list) :: {:ok, pid}
   def start_link(topic, channel, config, opts \\ []) do
     {:ok, config} = NSQ.Config.validate(config)
     {:ok, config} = NSQ.Config.normalize(config)
@@ -56,6 +76,7 @@ defmodule NSQ.Consumer do
   On init, we create a connection for each NSQD instance discovered, and set
   up loops for discovery and RDY redistribution.
   """
+  @spec init(map) :: {:ok, cons_state}
   def init(cons_state) do
     {:ok, conn_sup_pid} = NSQ.ConnectionSupervisor.start_link
     cons_state = %{cons_state | conn_sup_pid: conn_sup_pid}
@@ -72,6 +93,8 @@ defmodule NSQ.Consumer do
   The RDY loop periodically calls this to make sure RDY is balanced among our
   connections. Started from the supervisor.
   """
+  @spec handle_call(:redistribute_rdy, {reference, pid}, cons_state) ::
+    {:reply, :ok, cons_state}
   def handle_call(:redistribute_rdy, _from, cons_state) do
     {:ok, cons_state} = redistribute_rdy(self, cons_state)
     {:reply, :ok, cons_state}
@@ -81,12 +104,16 @@ defmodule NSQ.Consumer do
   The discovery loop calls this periodically to add/remove active nsqd
   connections. Started from the supervisor.
   """
+  @spec handle_call(:discover_nsqds, {reference, pid}, cons_state) ::
+    {:reply, :ok, cons_state}
   def handle_call(:discover_nsqds, _from, cons_state) do
     {:ok, cons_state} = delete_dead_connections(cons_state)
     {:ok, cons_state} = discover_nsqds_and_connect(self, cons_state)
     {:reply, :ok, cons_state}
   end
 
+  @spec handle_call({:start_stop_continue_backoff, term}, {reference, pid}, cons_state) ::
+    {:reply, :ok, cons_state}
   def handle_call({:start_stop_continue_backoff, backoff_flag}, _from, cons_state) do
     {:ok, cons_state} = start_stop_continue_backoff(self, backoff_flag, cons_state)
     {:reply, :ok, cons_state}
@@ -94,26 +121,34 @@ defmodule NSQ.Consumer do
 
   @doc """
   """
+  @spec handle_call({:update_rdy, connection, integer}, {reference, pid}, cons_state) ::
+    {:reply, :ok, cons_state}
   def handle_call({:update_rdy, conn, count}, _from, cons_state) do
     {:ok, cons_state} = update_rdy(self, conn, count, cons_state)
     {:reply, :ok, cons_state}
   end
 
+  @spec handle_call(:state, {reference, pid}, cons_state) ::
+    {:reply, cons_state, cons_state}
   def handle_call(:state, _from, state) do
     {:reply, state, state}
   end
 
+  @spec handle_call({:max_in_flight, integer}, {reference, pid}, cons_state) ::
+    {:reply, :ok, cons_state}
   def handle_call({:max_in_flight, new_max_in_flight}, _from, state) do
     state = %{state | max_in_flight: new_max_in_flight}
-
     {:reply, :ok, state}
   end
 
+  @spec handle_cast(:resume, cons_state) :: {:noreply, cons_state}
   def handle_cast(:resume, state) do
     {:ok, cons_state} = resume(self, state)
     {:noreply, cons_state}
   end
 
+  @spec handle_cast({:maybe_update_rdy, host_with_port}, cons_state) ::
+    {:noreply, cons_state}
   def handle_cast({:maybe_update_rdy, {_host, _port} = nsqd}, cons_state) do
     conn = conn_from_nsqd(self, nsqd, cons_state)
     {:ok, cons_state} = maybe_update_rdy(self, conn, cons_state)
@@ -128,24 +163,25 @@ defmodule NSQ.Consumer do
   supervisor, but we have it in NSQ.Consumer so end-users don't need to think
   about that.
   """
+  @spec new(String.t, String.t, NSQ.Config.t) :: {:ok, pid}
   def new(topic, channel, config) do
     NSQ.ConsumerSupervisor.start_link(topic, channel, config)
   end
 
-  @spec get_connections(map) :: {String.t, pid}
+  @spec get_connections(cons_state) :: [connection]
   def get_connections(cons_state) when is_map(cons_state) do
     children = Supervisor.which_children(cons_state.conn_sup_pid)
     Enum.map children, fn({child_id, pid, _, _}) -> {child_id, pid} end
   end
 
-  @spec get_connections(map) :: {String.t, pid}
+  @spec get_connections(pid, cons_state) :: [connection]
   def get_connections(cons, cons_state \\ nil) when is_pid(cons) do
     cons_state = cons_state || get_state(cons)
     children = Supervisor.which_children(cons_state.conn_sup_pid)
     Enum.map children, fn({child_id, pid, _, _}) -> {child_id, pid} end
   end
 
-  @spec connect_to_nsqds_on_init(Struct.t, map) :: {:ok, map}
+  @spec connect_to_nsqds_on_init(pid, cons_state) :: {:ok, cons_state}
   def connect_to_nsqds_on_init(cons, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
 
@@ -158,7 +194,7 @@ defmodule NSQ.Consumer do
     end
   end
 
-  @spec discover_nsqds_and_connect(Struct.t, map) :: {:ok, map} | {:error, String.t}
+  @spec discover_nsqds_and_connect(pid, cons_state) :: {:ok, cons_state}
   def discover_nsqds_and_connect(cons, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
 
@@ -180,7 +216,8 @@ defmodule NSQ.Consumer do
     {:ok, _cons_state} = update_connections(nsqds, cons, cons_state)
   end
 
-  @spec update_connections([{String.t, integer}], Struct.t, map) :: {:ok, map}
+  @spec update_connections([host_with_port], pid, cons_state) ::
+    {:ok, cons_state}
   def update_connections(discovered_nsqds, cons, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
 
@@ -193,7 +230,8 @@ defmodule NSQ.Consumer do
     {:ok, cons_state}
   end
 
-  @spec connect_to_nsqds([{String.t, integer}], Struct.t, map) :: {:ok, map}
+  @spec connect_to_nsqds([host_with_port], pid, cons_state) ::
+    {:ok, cons_state}
   def connect_to_nsqds(nsqds, cons, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
     cons_state = Enum.reduce nsqds, cons_state, fn(nsqd, last_state) ->
@@ -204,6 +242,7 @@ defmodule NSQ.Consumer do
   end
 
   # Adds a new NSQD connection and sends it RDY 1 to bootstrap.
+  @spec connect_to_nsqd(host_with_port, pid, cons_state) :: {:ok, cons_state}
   def connect_to_nsqd(nsqd, cons, cons_state) do
     {:ok, pid} = NSQ.ConnectionSupervisor.start_child(
       cons, nsqd, cons_state
@@ -226,7 +265,7 @@ defmodule NSQ.Consumer do
   Given a list of connections, force them to stop. Return the new state without
   those connections.
   """
-  @spec stop_connections([{String.t, pid}], Struct.t, map) :: {:ok, map}
+  @spec stop_connections([connection], pid, cons_state) :: {:ok, cons_state}
   def stop_connections(dead_conns, cons, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
 
@@ -238,6 +277,7 @@ defmodule NSQ.Consumer do
     {:ok, cons_state}
   end
 
+  @spec stop_connection(pid, host_with_port, cons_state) :: {:ok, cons_state}
   def stop_connection(cons, nsqd, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
 
@@ -251,6 +291,8 @@ defmodule NSQ.Consumer do
     {:ok, cons_state}
   end
 
+  @spec cleanup_connection(pid, host_with_port, cons_state)
+    :: {:ok, cons_state}
   def cleanup_connection(cons, nsqd, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
 
@@ -272,7 +314,7 @@ defmodule NSQ.Consumer do
   function tells us which connections we have stored in state but not in
   nsqlookupd.
   """
-  @spec dead_connections([{String.t, integer}], Struct.t, map) :: [{String.t, pid}]
+  @spec dead_connections([host_with_port], pid, cons_state) :: [connection]
   def dead_connections(discovered_nsqds, cons, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
     Enum.reject get_connections(cons_state), fn(conn) ->
@@ -285,7 +327,7 @@ defmodule NSQ.Consumer do
   already be in our connection list. This function reports which ones are new
   so we can connect to them.
   """
-  @spec new_nsqds([{String.t, integer}], Struct.t, map) :: [{String.t, integer}]
+  @spec new_nsqds([host_with_port], pid, cons_state) :: [host_with_port]
   def new_nsqds(discovered_nsqds, cons, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
     Enum.reject discovered_nsqds, fn(nsqd) ->
@@ -297,6 +339,7 @@ defmodule NSQ.Consumer do
   Initialized from NSQ.ConsumerSupervisor, sends the consumer a message on a
   fixed interval.
   """
+  @spec rdy_loop(pid, list) :: any
   def rdy_loop(cons, opts \\ []) do
     cons_state = get_state(cons)
     GenServer.call(cons, :redistribute_rdy)
@@ -309,6 +352,7 @@ defmodule NSQ.Consumer do
   Initialized from NSQ.ConsumerSupervisor, sends the consumer a message on a
   fixed interval.
   """
+  @spec rdy_loop(pid, list) :: any
   def discovery_loop(cons, opts \\ []) do
     cons_state = get_state(cons)
     %NSQ.Config{
@@ -322,10 +366,12 @@ defmodule NSQ.Consumer do
     discovery_loop(cons)
   end
 
+  @spec get_state(pid) :: {:ok, cons_state}
   def get_state(cons) do
     GenServer.call(cons, :state)
   end
 
+  @spec start_stop_continue_backoff(pid, term, cons_state) :: {:ok, cons_state}
   def start_stop_continue_backoff(cons, backoff_signal, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
 
@@ -366,6 +412,7 @@ defmodule NSQ.Consumer do
     end
   end
 
+  @spec calculate_backoff(cons_state) :: integer
   def calculate_backoff(cons_state) do
     case cons_state.config.backoff_strategy do
       :exponential -> exponential_backoff(cons_state)
@@ -373,6 +420,7 @@ defmodule NSQ.Consumer do
     end
   end
 
+  @spec exponential_backoff(cons_state) :: integer
   def exponential_backoff(cons_state) do
     attempts = cons_state.backoff_counter
     mult = cons_state.config.backoff_multiplier
@@ -382,8 +430,8 @@ defmodule NSQ.Consumer do
     ) |> round
   end
 
-  @doc """
-  """
+  @spec resume_from_backoff_later(pid, integer, cons_state) ::
+    {:ok, cons_state}
   def resume_from_backoff_later(cons, duration, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
     Task.start_link fn ->
@@ -401,6 +449,7 @@ defmodule NSQ.Consumer do
   messages succeed a number of times == backoff_counter. (That logic is in
   start_stop_continue_backoff.)
   """
+  @spec resume(pid, cons_state) :: {:ok, cons_state}
   def resume(cons, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
     if cons_state.backoff_duration == 0 || cons_state.backoff_counter == 0 do
@@ -444,6 +493,7 @@ defmodule NSQ.Consumer do
   some connections to 0 so that they're all guaranteed to eventually process
   messages.
   """
+  @spec redistribute_rdy(pid, cons_state) :: {:ok, cons_state}
   def redistribute_rdy(cons, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
 
@@ -488,6 +538,7 @@ defmodule NSQ.Consumer do
     end
   end
 
+  @spec maybe_update_rdy(pid, connection, cons_state) :: {:ok, cons_state}
   def maybe_update_rdy(cons, conn, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
     in_backoff = cons_state.backoff_counter > 0
@@ -511,6 +562,7 @@ defmodule NSQ.Consumer do
     end
   end
 
+  @spec update_rdy(pid, connection, integer, cons_state) :: {:ok, cons_state}
   def update_rdy(cons, conn, count, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
 
@@ -548,6 +600,7 @@ defmodule NSQ.Consumer do
     end
   end
 
+  @spec retry_rdy(pid, connection, integer, cons_state) :: {:ok, cons_state}
   def retry_rdy(cons, conn, count, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
 
@@ -563,6 +616,7 @@ defmodule NSQ.Consumer do
     {:ok, cons_state}
   end
 
+  @spec send_rdy(pid, connection, integer, cons_state) :: {:ok, cons_state}
   def send_rdy(cons, {_id, pid} = conn, count, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
 
@@ -579,6 +633,7 @@ defmodule NSQ.Consumer do
     end
   end
 
+  @spec per_conn_max_in_flight(pid, cons_state) :: integer
   def per_conn_max_in_flight(cons, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
     max_in_flight = cons_state.max_in_flight
@@ -586,21 +641,25 @@ defmodule NSQ.Consumer do
     min(max(1, max_in_flight / conn_count), max_in_flight) |> round
   end
 
+  @spec total_rdy_count(pid) :: integer
   def total_rdy_count(agent_pid) when is_pid(agent_pid) do
     reduce_conn_info agent_pid, 0, fn({_, conn_info}, acc) ->
       acc + conn_info.rdy_count
     end
   end
 
+  @spec total_rdy_count(cons_state) :: integer
   def total_rdy_count(%{shared_conn_info_agent: agent_pid} = _cons_state) do
     total_rdy_count(agent_pid)
   end
 
+  @spec change_max_in_flight(pid, integer) :: {:ok, :ok}
   def change_max_in_flight(sup_pid, new_max_in_flight) do
     cons = get(sup_pid)
     GenServer.call(cons, {:max_in_flight, new_max_in_flight})
   end
 
+  @spec delete_dead_connections(cons_state) :: {:ok, cons_state}
   def delete_dead_connections(state) do
     Enum.map get_connections(state), fn({conn_id, pid} = conn) ->
       unless Process.alive?(pid) do
@@ -610,32 +669,47 @@ defmodule NSQ.Consumer do
     {:ok, state}
   end
 
+  # The end-user will be targeting the supervisor, but it's the consumer that
+  # can actually handle the command.
+  @spec get(pid) :: pid
+  def get(sup_pid) do
+    children = Supervisor.which_children(sup_pid)
+    child = Enum.find(children, fn({kind, pid, _, _}) -> kind == NSQ.Consumer end)
+    {_, pid, _, _} = child
+    pid
+  end
+
   # ------------------------------------------------------- #
   # Private Functions                                       #
   # ------------------------------------------------------- #
+  @spec now() :: integer
   defp now do
     :calendar.datetime_to_gregorian_seconds(:calendar.universal_time)
   end
 
   epoch = {{1970, 1, 1}, {0, 0, 0}}
   @epoch :calendar.datetime_to_gregorian_seconds(epoch)
+  @spec datetime_from_timestamp(tuple) :: integer
   defp datetime_from_timestamp(timestamp) do
     timestamp
     |> +(@epoch)
     |> :calendar.gregorian_seconds_to_datetime
   end
 
+  @spec count_connections(cons_state) :: integer
   defp count_connections(cons_state) do
     %{active: active} = Supervisor.count_children(cons_state.conn_sup_pid)
     active
   end
 
+  @spec conn_already_discovered?(pid, connection, [host_with_port]) :: boolean
   defp conn_already_discovered?(cons, {conn_id, _}, discovered_nsqds) do
     Enum.any? discovered_nsqds, fn(nsqd) ->
       get_conn_id(cons, nsqd) == conn_id
     end
   end
 
+  @spec nsqd_already_has_connection?(host_with_port, pid, cons_state) :: boolean
   defp nsqd_already_has_connection?(nsqd, cons, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
     needle = get_conn_id(cons, nsqd)
@@ -646,6 +720,8 @@ defmodule NSQ.Consumer do
 
   # Helper for redistribute_rdy; we set RDY to 1 for _some_ connections that
   # were halted, randomly, until there's no more RDY left to assign.
+  @spec redistribute_rdy_r(pid, [connection], integer, cons_state) ::
+    {:ok, cons_state}
   defp redistribute_rdy_r(cons, possible_conns, available_max_in_flight, cons_state) do
     cons_state = cons_state || get_state(cons)
     if length(possible_conns) == 0 || available_max_in_flight <= 0 do
@@ -658,6 +734,7 @@ defmodule NSQ.Consumer do
     end
   end
 
+  @spec should_redistribute_rdy?(cons_state) :: boolean
   defp should_redistribute_rdy?(cons_state) do
     conn_count = count_connections(cons_state)
     in_backoff = cons_state.backoff_counter > 0
@@ -673,6 +750,8 @@ defmodule NSQ.Consumer do
   end
 
   # TODO: We can do this with a fold or reduce instead of recursion
+  @spec connections_maybe_update_rdy([connection], pid, cons_state) ::
+    {:ok, cons_state}
   defp connections_maybe_update_rdy(connections, cons, cons_state) do
     if connections == [] do
       {:ok, cons_state}
@@ -683,15 +762,7 @@ defmodule NSQ.Consumer do
     end
   end
 
-  # The end-user will be targeting the supervisor, but it's the consumer that
-  # can actually handle the command.
-  def get(sup_pid) do
-    children = Supervisor.which_children(sup_pid)
-    child = Enum.find(children, fn({kind, pid, _, _}) -> kind == NSQ.Consumer end)
-    {_, pid, _, _} = child
-    pid
-  end
-
+  @spec conn_from_nsqd(pid, host_with_port, cons_state) :: connection
   defp conn_from_nsqd(cons, nsqd, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
     needle = get_conn_id(cons, nsqd)
@@ -700,6 +771,7 @@ defmodule NSQ.Consumer do
     end
   end
 
+  @spec pid_from_nsqd(pid, host_with_port, cons_state) :: pid
   defp pid_from_nsqd(cons, nsqd, cons_state \\ nil) do
     case conn_from_nsqd(cons, nsqd, cons_state) do
       nil -> nil
