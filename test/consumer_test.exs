@@ -43,9 +43,6 @@ defmodule NSQ.ConsumerTest do
     Logger.warn "Closing socket as part of test..."
     :gen_tcp.close(conn_state.socket)
 
-    # Immediately after closing, a connection is still reported.
-    assert length(Cons.get_connections(cons)) == 1
-
     # Wait for the lookupd loop to run again, at which point it will remove the
     # dead connection and spawn a new one.
     :timer.sleep(500)
