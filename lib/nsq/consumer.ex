@@ -386,7 +386,7 @@ defmodule NSQ.Consumer do
   """
   def resume_from_backoff_later(cons, duration, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
-    spawn_link fn ->
+    Task.start_link fn ->
       :timer.sleep(duration)
       GenServer.cast(cons, :resume)
       resume(cons)
@@ -554,7 +554,7 @@ defmodule NSQ.Consumer do
     delay = cons_state.config.rdy_retry_delay
     Logger.debug("(#{inspect conn}) retry RDY in #{delay / 1000} seconds")
 
-    retry_pid = spawn_link fn ->
+    {:ok, retry_pid} = Task.start_link fn ->
       :timer.sleep(delay)
       GenServer.call(cons, {:update_rdy, conn, count})
     end
