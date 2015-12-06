@@ -100,7 +100,9 @@ defmodule NSQ.Config do
     # Maximum number of messages to allow in flight (concurrency knob)
     max_in_flight: 2500,
 
-    # The server-side message timeout for messages delivered to this client
+    # The server-side message timeout for messages delivered to this client.
+    # After waiting this long without a TOUCH, NSQD will automatically requeue
+    # the message.
     msg_timeout: 60 * @seconds,
 
     # secret for nsqd authentication (requires nsqd 0.2.29+)

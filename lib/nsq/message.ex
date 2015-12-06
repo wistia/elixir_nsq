@@ -8,7 +8,17 @@ defmodule NSQ.Message do
   # ------------------------------------------------------- #
   # Struct Definition                                       #
   # ------------------------------------------------------- #
-  defstruct [:id, :timestamp, :attempts, :body, :connection, :consumer, :socket, :config]
+  defstruct [
+    :id,
+    :timestamp,
+    :attempts,
+    :body,
+    :connection,
+    :consumer,
+    :socket,
+    :config,
+    :processing_pid
+  ]
 
   # ------------------------------------------------------- #
   # API Definitions                                         #
@@ -33,18 +43,9 @@ defmodule NSQ.Message do
     pid = spawn_link fn ->
       NSQ.Message.process_without_timeout(parent, message)
     end
+    message = %{message | processing_pid: pid}
 
-    # We expect our function will send us a message when it's done. Block until
-    # that happens. If it takes too long, requeue the message and cancel
-    # processing.
-    receive do
-      {:message_done, _msg} ->
-        unlink_and_exit(pid)
-    after
-      message.config.msg_timeout ->
-        unlink_and_exit(pid)
-        NSQ.Message.req(message)
-    end
+    wait_for_msg_done(message)
 
     # Even if we've killed the message processing, we're still "done"
     # processing it for now. That is, we should free up a spot on
@@ -143,6 +144,27 @@ defmodule NSQ.Message do
       handler.handle_message(message.body, message)
     end
   end
+
+  # We expect our function will send us a message when it's done. Block until
+  # that happens. If it takes too long, requeue the message and cancel
+  # processing.
+  defp wait_for_msg_done(message) do
+    receive do
+      {:message_done, _msg} ->
+        unlink_and_exit(message.processing_pid)
+      {:message_touch, _msg} ->
+        # If NSQ.Message.touch(msg) is called, we will send TOUCH msg_id to
+        # NSQD, but we also need to reset our timeout on the client to avoid
+        # processes that hang forever.
+        wait_for_msg_done(message)
+    after
+      message.config.msg_timeout ->
+        # If we've waited this long, we can assume NSQD will requeue the
+        # message on its own.
+        unlink_and_exit(message.processing_pid)
+    end
+  end
+
 
   defp unlink_and_exit(pid) do
     Process.unlink(pid)
