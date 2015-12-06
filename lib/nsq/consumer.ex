@@ -622,7 +622,8 @@ defmodule NSQ.Consumer do
       # Free up any connections that are RDY but not processing messages.
       possible_conns = give_up_rdy_for_idle_connections(cons, cons_state)
 
-      # Determine how much RDY we can distribute.
+      # Determine how much RDY we can distribute. This needs to happen before
+      # we give up RDY, or max_in_flight will end up equalling RDY.
       available_max_in_flight = get_available_max_in_flight(cons_state)
 
       # Distribute it!
@@ -833,7 +834,6 @@ defmodule NSQ.Consumer do
   @spec distribute_rdy_randomly(pid, [connection], integer, cons_state) ::
     {:ok, cons_state}
   defp distribute_rdy_randomly(cons, possible_conns, available_max_in_flight, cons_state) do
-    cons_state = cons_state || get_state(cons)
     if length(possible_conns) == 0 || available_max_in_flight <= 0 do
       {:ok, cons_state}
     else
@@ -912,15 +912,16 @@ defmodule NSQ.Consumer do
       [last_msg_t, rdy_count] = fetch_conn_info(
         cons_state, conn_id, [:last_msg_timestamp, :rdy_count]
       )
-      time_since_last_msg = (now - last_msg_t)
+      sec_since_last_msg = now - last_msg_t
+      ms_since_last_msg = sec_since_last_msg * 1000
 
       Logger.debug(
         "(#{inspect conn}) rdy: #{rdy_count} (last message received \
-        #{time_since_last_msg} seconds ago, \
+        #{sec_since_last_msg} seconds ago, \
         #{inspect datetime_from_timestamp(last_msg_t)})"
       )
 
-      is_idle = time_since_last_msg > cons_state.config.low_rdy_idle_timeout
+      is_idle = ms_since_last_msg > cons_state.config.low_rdy_idle_timeout
       if rdy_count > 0 && is_idle do
         Logger.debug("(#{inspect conn}) idle connection, giving up RDY")
         {:ok, _cons_state} = update_rdy(cons, conn, 0, cons_state)
