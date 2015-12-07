@@ -18,14 +18,15 @@ See these resources for more info on building client libraries:
 - [x] Test discovery via nsqlookupd for consumers
 - [x] Test connection failure behavior
 - [ ] Set connection's max_rdy from IDENTIFY result
-- [ ] Graceful connection closing
 - [ ] Respect configured read_timeout
 - [ ] Respect configured write_timeout
 - [ ] Handle errors reported by NSQD
+- [ ] Graceful connection closing
 - [ ] TLS support
 - [ ] Auth support
 - [ ] Delegates
 - [ ] Include Procfile for running nsqd/nsqlookupd for tests
+- [ ] Producer connection restart loop
 
 ## Publish Messages
 
