@@ -75,19 +75,16 @@ defmodule NSQ.Producer do
     Supervisor.which_children(pro_state.conn_sup_pid)
   end
 
-  def random_connection_pid(pro, pro_state \\ nil) do
-    pro_state = pro_state || get_state(pro)
+  def random_connection_pid(pro_state) do
     {_child_id, pid} = Enum.random(get_connections(pro_state))
     pid
   end
 
-  def connect_to_nsqds(nsqds, pro, pro_state \\ nil) do
-    pro_state = pro_state || get_state(pro)
-    new_conns = Enum.map nsqds, fn(nsqd) ->
-      {:ok, conn} = NSQ.ConnectionSupervisor.start_child(
+  def connect_to_nsqds(nsqds, pro, pro_state) do
+    Enum.map nsqds, fn(nsqd) ->
+      {:ok, _conn} = NSQ.ConnectionSupervisor.start_child(
         pro, nsqd, pro_state
       )
-      {nsqd, conn}
     end
     {:ok, pro_state}
   end
@@ -128,21 +125,21 @@ defmodule NSQ.Producer do
   # can actually handle the command.
   def get(sup_pid) do
     children = Supervisor.which_children(sup_pid)
-    child = Enum.find(children, fn({kind, pid, _, _}) -> kind == NSQ.Producer end)
+    child = Enum.find(children, fn({kind, _, _, _}) -> kind == NSQ.Producer end)
     {_, pid, _, _} = child
     pid
   end
 
   # Used to DRY up handle_call({:pub, ...).
   defp do_pub(topic, data, pro_state) do
-    conn_pid = random_connection_pid(self, pro_state)
+    conn_pid = random_connection_pid(pro_state)
     {:ok, resp} = NSQ.Connection.cmd(conn_pid, {:pub, topic, data})
     {:reply, {:ok, resp}, pro_state}
   end
 
   # Used to DRY up handle_call({:mpub, ...).
   defp do_mpub(topic, data, pro_state) do
-    conn_pid = random_connection_pid(self, pro_state)
+    conn_pid = random_connection_pid(pro_state)
     {:ok, resp} = NSQ.Connection.cmd(conn_pid, {:mpub, topic, data})
     {:reply, {:ok, resp}, pro_state}
   end
