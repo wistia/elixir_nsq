@@ -305,7 +305,7 @@ defmodule NSQ.ConsumerTest do
     cons_state = Cons.get_state(cons)
     assert fetch_conn_info(cons_state, conn, :retry_rdy_pid) == nil
 
-    Cons.update_rdy(cons, conn, 1)
+    GenServer.call(cons, {:update_rdy, conn, 1})
     refute_receive :handled, 500
     cons_state = Cons.get_state(cons)
     assert fetch_conn_info(cons_state, conn, :retry_rdy_pid) |> is_pid
