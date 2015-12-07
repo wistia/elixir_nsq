@@ -168,14 +168,20 @@ defmodule NSQ.Producer do
     {:ok, _resp} = GenServer.call(get(sup_pid), {:mpub, topic, data})
   end
 
-  # The end-user will be targeting the supervisor, but it's the producer that
-  # can actually handle the command.
+  @doc """
+  The end-user will be targeting the supervisor, but it's the producer that
+  can actually handle the command.
+  """
   def get(sup_pid) do
     children = Supervisor.which_children(sup_pid)
     child = Enum.find(children, fn({kind, _, _, _}) -> kind == NSQ.Producer end)
     {_, pid, _, _} = child
     pid
   end
+
+  # ------------------------------------------------------- #
+  # Private Functions                                       #
+  # ------------------------------------------------------- #
 
   # Used to DRY up handle_call({:pub, ...).
   defp do_pub(topic, data, pro_state) do
