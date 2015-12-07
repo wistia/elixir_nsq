@@ -87,7 +87,7 @@ defmodule NSQ.Connection do
       case :gen_tcp.connect(to_char_list(host), port, socket_opts, state.config.dial_timeout) do
         {:ok, socket} ->
           state = %{state | socket: socket}
-          {:ok, state} = do_handshake(self, state)
+          {:ok, state} = do_handshake(state)
           {:ok, state} = start_receiving_messages(socket, state)
           {:ok, reset_reconnects(state)}
         {:error, reason} ->
@@ -131,7 +131,7 @@ defmodule NSQ.Connection do
   @spec handle_call({:cmd, tuple, atom}, {pid, reference}, conn_state) ::
     {:reply, {:ok, reference}, conn_state} |
     {:reply, {:queued, :nosocket}, conn_state}
-  def handle_call({:cmd, cmd, kind}, {pid, ref} = from, state) do
+  def handle_call({:cmd, cmd, kind}, {_, ref} = from, state) do
     if state.socket do
       state = send_data_and_queue_resp(state, cmd, from, kind)
       state = update_state_from_cmd(cmd, state)
@@ -170,7 +170,7 @@ defmodule NSQ.Connection do
       {:response, data} ->
         {item, cmd_resp_queue} = :queue.out(cmd_resp_queue)
         case item do
-          {:value, {cmd, {pid, ref}, :reply}} ->
+          {:value, {_cmd, {pid, ref}, :reply}} ->
             send(pid, {ref, data})
           :empty -> :ok
         end
@@ -206,7 +206,7 @@ defmodule NSQ.Connection do
   # flight.
   @spec handle_info({reference, {:message_done, NSQ.Message.t}}, conn_state) ::
     {:noreply, conn_state}
-  def handle_info({_ref, {:message_done, msg}}, state) do
+  def handle_info({_ref, {:message_done, _msg}}, state) do
     state = state |> decrement_messages_in_flight
     {:noreply, state}
   end
@@ -331,10 +331,10 @@ defmodule NSQ.Connection do
   Immediately after connecting to the NSQ socket, both consumers and producers
   follow this protocol.
   """
-  @spec do_handshake(pid, conn_state) :: {:ok, conn_state}
-  def do_handshake(conn_pid, conn_state) do
+  @spec do_handshake(conn_state) :: {:ok, conn_state}
+  def do_handshake(conn_state) do
     conn_state = Task.async(fn ->
-      %{socket: socket, topic: topic, channel: channel} = conn_state
+      %{socket: socket, channel: channel} = conn_state
 
       socket |> send_magic_v2
       {:ok, conn_state} = socket |> identify(conn_state)
@@ -463,11 +463,6 @@ defmodule NSQ.Connection do
     interval = conn_state.config.lookupd_poll_interval
     jitter = round(interval * conn_state.config.lookupd_poll_jitter * :random.uniform)
     interval + jitter
-  end
-
-  @spec using_nsqlookupd?(conn_state) :: boolean
-  defp using_nsqlookupd?(state) do
-    length(state.config.nsqlookupds) > 0
   end
 
   @spec now :: integer

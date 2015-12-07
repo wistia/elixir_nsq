@@ -1,6 +1,4 @@
 defmodule NSQ.Config do
-  alias ElixirNsq.Mixfile
-
   @ms 1
   @seconds 1000 * @ms
   @minutes 60 * @seconds

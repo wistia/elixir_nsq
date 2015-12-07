@@ -101,7 +101,7 @@ defmodule NSQ.ConnInfo do
   end
 
   @doc false
-  def update(%{conn_info_pid: agent_pid} = state, conn_id, func) do
+  def update(%{conn_info_pid: agent_pid}, conn_id, func) do
     update(agent_pid, conn_id, func)
   end
 
