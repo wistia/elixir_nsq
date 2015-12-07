@@ -5,7 +5,39 @@ defmodule NSQ.Producer do
 
   ## Interface
 
-  To initialize a producer, use the `new`
+  To initialize a producer, use `new/2`.
+
+      {:ok, producer} = NSQ.Producer.new("the-default-topic", %NSQ.Config{
+        nsqds: ["127.0.0.1:6750"]
+      })
+
+  The default `topic` argument is _required_, even if you plan on explicitly
+  publishing to a different topic. If you don't plan on using, you can set it
+  to something like `_default_topic_`.
+
+  If you provide more than one nsqd, each `pub`/`mpub` will choose one
+  randomly.
+
+  Note that, unlike consumers, producers _cannot_ be configured to use
+  discovery with nsqlookupd. This is because discovery requires a topic and
+  channel, and an nsqd will only appear in nsqlookupd if it has already
+  published messages on that topic. So there's a chicken-and-egg problem. The
+  recommended solution is to run NSQD on the same box where you're publishing,
+  so your address is always 127.0.0.1 with a static port.
+
+  ### pub
+
+  Publish a single message to NSQD.
+
+      NSQ.Producer.pub(producer, "a message")
+      NSQ.Producer.pub(producer, "different-topic", "a message")
+
+  ### mpub
+
+  Publish a bunch of messages to NSQD atomically.
+
+      NSQ.Producer.mpub(producer, ["one", "two"])
+      NSQ.Producer.mpub(producer, "different-topic", ["one", "two"])
   """
 
   # ------------------------------------------------------- #
