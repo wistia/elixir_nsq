@@ -86,7 +86,7 @@ end
 If your message is especially long-running and you know it's not dead, you can
 touch it so that NSQ doesn't automatically fail and requeue it.
 
-```
+```elixir
 def MyMsgHandler do
   def handle_message(body, msg) do
     spawn_link fn ->
