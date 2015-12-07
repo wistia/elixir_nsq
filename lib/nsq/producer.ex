@@ -127,7 +127,7 @@ defmodule NSQ.Producer do
   def connect_to_nsqds(nsqds, pro, pro_state) do
     Enum.map nsqds, fn(nsqd) ->
       {:ok, _conn} = NSQ.ConnectionSupervisor.start_child(
-        pro, nsqd, pro_state
+        pro, nsqd, pro_state, [restart: :permanent]
       )
     end
     {:ok, pro_state}
