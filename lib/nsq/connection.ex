@@ -60,7 +60,8 @@ defmodule NSQ.Connection do
     max_rdy: 2500,
     reconnect_attempts: 0,
     stop_flag: false,
-    conn_info_pid: nil
+    conn_info_pid: nil,
+    msg_timeout: nil
   }
 
   # ------------------------------------------------------- #
@@ -188,7 +189,8 @@ defmodule NSQ.Connection do
           connection: self,
           consumer: state.parent,
           socket: socket,
-          config: state.config
+          config: state.config,
+          msg_timeout: state.msg_timeout
         }
         GenServer.cast(state.parent, {:maybe_update_rdy, state.nsqd})
         Task.Supervisor.start_child(
@@ -319,7 +321,7 @@ defmodule NSQ.Connection do
       %{socket: socket, topic: topic, channel: channel} = conn_state
 
       socket |> send_magic_v2
-      socket |> identify(conn_state)
+      {:ok, conn_state} = socket |> identify(conn_state)
 
       # Producers don't have a channel, so they won't do this.
       if channel do
@@ -379,15 +381,26 @@ defmodule NSQ.Connection do
     identify_obj = encode({:identify, identify_props(conn_state)})
     :ok = :gen_tcp.send(socket, identify_obj)
     {:response, json} = recv_nsq_response(socket, conn_state)
-    parsed = update_conn_info_from_identify_response(conn_state, json)
-    {:ok, parsed}
+    {:ok, _conn_state} = update_from_identify_response(conn_state, json)
   end
 
-  @spec update_conn_info_from_identify_response(map, binary) :: map
-  defp update_conn_info_from_identify_response(conn_state, json) do
+  @spec update_from_identify_response(map, binary) :: map
+  defp update_from_identify_response(conn_state, json) do
     {:ok, parsed} = Poison.decode(json)
-    ConnInfo.update conn_state, %{max_rdy: parsed["max_rdy_count"]}
-    parsed
+
+    # respect negotiated max_rdy_count
+    if parsed["max_rdy_count"] do
+      ConnInfo.update conn_state, %{max_rdy: parsed["max_rdy_count"]}
+    end
+
+    # respect negotiated msg_timeout
+    if parsed["msg_timeout"] do
+      conn_state = %{conn_state | msg_timeout: parsed["msg_timeout"]}
+    else
+      conn_state = %{conn_state | msg_timeout: conn_state.config.msg_timeout}
+    end
+
+    {:ok, conn_state}
   end
 
   @spec recv_nsq_response(pid, map) :: {:response, binary}

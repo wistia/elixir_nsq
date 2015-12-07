@@ -17,7 +17,8 @@ defmodule NSQ.Message do
     :consumer,
     :socket,
     :config,
-    :processing_pid
+    :processing_pid,
+    :msg_timeout
   ]
 
   # ------------------------------------------------------- #
@@ -158,7 +159,7 @@ defmodule NSQ.Message do
         # processes that hang forever.
         wait_for_msg_done(message)
     after
-      message.config.msg_timeout ->
+      message.msg_timeout ->
         # If we've waited this long, we can assume NSQD will requeue the
         # message on its own.
         unlink_and_exit(message.processing_pid)
