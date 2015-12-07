@@ -80,7 +80,7 @@ defmodule NSQ.ConsumerTest do
 
   test "discovery via nsqlookupd" do
     test_pid = self
-    {:ok, cons_sup_pid} = NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
+    {:ok, _} = NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
       lookupd_poll_interval: 500,
       nsqlookupds: ["127.0.0.1:6771", "127.0.0.1:6781"],
       message_handler: fn(body, msg) ->
