@@ -358,7 +358,7 @@ defmodule NSQ.Connection do
   def cmd(conn_pid, cmd, timeout \\ 5000) do
     {:ok, ref} = GenServer.call(conn_pid, {:cmd, cmd, :reply})
     receive do
-      {ref, data} ->
+      {^ref, data} ->
         {:ok, data}
     after
       timeout ->

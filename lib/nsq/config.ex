@@ -198,7 +198,7 @@ defmodule NSQ.Config do
   end
 
   defp matches_any?(val, candidates) do
-    Enum.any?(candidates, fn(candidate) -> candidate = val end)
+    Enum.any?(candidates, fn(candidate) -> candidate == val end)
   end
 
   defp no_match_error(val, candidates) do
