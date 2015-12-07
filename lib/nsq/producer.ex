@@ -121,6 +121,9 @@ defmodule NSQ.Producer do
     pid
   end
 
+  @doc """
+  Create supervised connections to NSQD.
+  """
   def connect_to_nsqds(nsqds, pro, pro_state) do
     Enum.map nsqds, fn(nsqd) ->
       {:ok, _conn} = NSQ.ConnectionSupervisor.start_child(
@@ -130,6 +133,9 @@ defmodule NSQ.Producer do
     {:ok, pro_state}
   end
 
+  @doc """
+  Get the current state of a producer. Used in tests. Not for external use.
+  """
   def get_state(producer) do
     GenServer.call(producer, :state)
   end
