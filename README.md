@@ -31,10 +31,9 @@ See these resources for more info on building client libraries:
 ## Publish Messages
 
 ```elixir
-config = %NSQ.Config{
+{:ok, producer} = NSQ.Producer.new("my-topic", %NSQ.Config{
   nsqds: ["127.0.0.1:4150", "127.0.0.1:4151"]
-}
-{:ok, producer} = NSQ.Producer.new(config, "my-topic")
+})
 
 # publish to the default topic "my-topic"
 NSQ.Producer.pub(producer, "a message")
@@ -57,7 +56,7 @@ handler throws an exception, it will automatically be requeued and delayed with
 a timeout based on attempts.
 
 ```elixir
-config = %NSQ.Config{
+{:ok, consumer} = NSQ.Consumer.new("my-topic", "my-channel", %NSQ.Config{
   nsqlookupds: ["127.0.0.1:4160", "127.0.0.1:4161"],
   message_handler: fn(body, msg) ->
     IO.puts "id: #{msg.id}"
@@ -65,8 +64,7 @@ config = %NSQ.Config{
     IO.puts "timestamp: #{msg.timestamp}"
     :ok
   end
-}
-{:ok, consumer} = NSQ.Consumer.new(config, "my-topic", "my-channel")
+})
 ```
 
 The message handler can also be a module that implements `handle_message/2`:
@@ -79,11 +77,10 @@ defmodule MyMsgHandler do
   end
 end
 
-config = %NSQ.Config{
+{:ok, consumer} = NSQ.Consumer.new("my-topic", "my-channel", %NSQ.Config{
   nsqlookupds: ["127.0.0.1:4160", "127.0.0.1:4161"],
   message_handler: MyMsgHandler
-}
-{:ok, consumer} = NSQ.Consumer.new(config, "my-topic", "my-channel")
+})
 ```
 
 If your message is especially long-running and you know it's not dead, you can
@@ -105,20 +102,19 @@ end
 If you're not using nsqlookupd, you can specify nsqds directly:
 
 ```elixir
-config = %NSQ.Config{
+{:ok, consumer} = NSQ.Consumer.new("my-topic", "my-channel", %NSQ.Config{
   nsqds: ["127.0.0.1:4150", "127.0.0.1:4151"],
   message_handler: fn(body, msg) ->
     :ok
   end
-}
-{:ok, consumer} = NSQ.Consumer.new(config, "my-topic", "my-channel")
+})
 ```
 
 ### Supervision Tree
 
     Consumer Supervisor
       Consumer
-        ConnectionInfo Agent
+        ConnInfo Agent
         ConnectionSupervisor
           Connection
             Task.Supervisor
@@ -133,7 +129,7 @@ config = %NSQ.Config{
 
     Producer Supervisor
       Producer
-        ConnectionInfo Agent
+        ConnInfo Agent
         ConnectionSupervisor
           Connection
           Connection
