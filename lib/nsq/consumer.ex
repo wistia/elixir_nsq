@@ -674,41 +674,39 @@ defmodule NSQ.Consumer do
   end
 
   @spec update_rdy(pid, connection, integer, cons_state) :: {:ok, cons_state}
-  def update_rdy(cons, conn, count, cons_state \\ nil) do
+  def update_rdy(cons, conn, new_rdy, cons_state \\ nil) do
     cons_state = cons_state || get_state(cons)
-
     conn_info = fetch_conn_info(cons_state, get_conn_id(conn))
-    if count > conn_info.max_rdy, do: count = conn_info.max_rdy
 
-    # If this is for a connection that's retrying, kill the timer and clean up.
-    if retry_pid = conn_info.retry_rdy_pid do
-      if Process.alive?(retry_pid) do
-        Logger.debug("(#{inspect conn}) rdy retry pid #{inspect retry_pid} detected, killing")
-        Process.exit(retry_pid, :normal)
-      end
+    cancel_outstanding_rdy_retry(cons_state, conn)
 
-      update_conn_info(cons_state, get_conn_id(conn), %{retry_rdy_pid: nil})
+    # Cap the given RDY based on the connection config.
+    new_rdy = [new_rdy, conn_info.max_rdy] |> Enum.min |> round
+
+    # Cap the given RDY based on how much we can actually assign. Unless it's
+    # 0, in which case we'll be retrying.
+    max_possible_rdy = calc_max_possible_rdy(cons_state, conn_info)
+    if max_possible_rdy > 0 do
+      new_rdy = [new_rdy, max_possible_rdy] |> Enum.min |> round
     end
 
-    rdy_count = conn_info.rdy_count
-    max_in_flight = cons_state.max_in_flight
-    total_rdy = total_rdy_count(cons_state)
-    max_possible_rdy = max_in_flight - total_rdy + rdy_count
-
-    if max_possible_rdy > 0 && max_possible_rdy < count do
-      count = max_possible_rdy
-    end
-
-    if max_possible_rdy <= 0 && count > 0 do
-      if rdy_count == 0 do
-        # Schedule update_rdy(consumer, conn, count) for this connection again
+    if max_possible_rdy <= 0 && new_rdy > 0 do
+      if conn_info.rdy_count == 0 do
+        # Schedule update_rdy(consumer, conn, new_rdy) for this connection again
         # in 5 seconds. This is to prevent eternal starvation.
-        {:ok, cons_state} = retry_rdy(cons, conn, count, cons_state)
+        {:ok, cons_state} = retry_rdy(cons, conn, new_rdy, cons_state)
       end
       {:ok, cons_state}
     else
-      {:ok, _cons_state} = send_rdy(cons, conn, count, cons_state)
+      {:ok, _cons_state} = send_rdy(cons, conn, new_rdy, cons_state)
     end
+  end
+
+  defp calc_max_possible_rdy(cons_state, conn_info) do
+    rdy_count = conn_info.rdy_count
+    max_in_flight = cons_state.max_in_flight
+    total_rdy = total_rdy_count(cons_state)
+    max_in_flight - total_rdy + rdy_count
   end
 
   @spec retry_rdy(pid, connection, integer, cons_state) :: {:ok, cons_state}
@@ -940,6 +938,21 @@ defmodule NSQ.Consumer do
       1 - total_rdy
     else
       cons_state.max_in_flight - total_rdy
+    end
+  end
+
+  @spec cancel_outstanding_rdy_retry(cons_state, connection) :: any
+  defp cancel_outstanding_rdy_retry(cons_state, conn) do
+    conn_info = fetch_conn_info(cons_state, get_conn_id(conn))
+
+    # If this is for a connection that's retrying, kill the timer and clean up.
+    if retry_pid = conn_info.retry_rdy_pid do
+      if Process.alive?(retry_pid) do
+        Logger.warn("(#{inspect conn}) rdy retry pid #{inspect retry_pid} detected, killing")
+        Process.exit(retry_pid, :normal)
+      end
+
+      update_conn_info(cons_state, get_conn_id(conn), %{retry_rdy_pid: nil})
     end
   end
 end
