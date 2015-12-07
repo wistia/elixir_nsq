@@ -82,7 +82,7 @@ defmodule NSQ.Connection do
     {:stop, term, map}
   def connect(_info, %{nsqd: {host, port}} = state) do
     if should_attempt_connection?(state) do
-      case :gen_tcp.connect(to_char_list(host), port, @socket_opts) do
+      case :gen_tcp.connect(to_char_list(host), port, @socket_opts, state.config.dial_timeout) do
         {:ok, socket} ->
           state = %{state | socket: socket}
           {:ok, state} = do_handshake(self, state)
@@ -303,17 +303,20 @@ defmodule NSQ.Connection do
   follow this protocol.
   """
   @spec do_handshake(pid, conn_state) :: {:ok, conn_state}
-  def do_handshake(conn_pid, conn_state \\ nil) do
-    conn_state = conn_state || get_state(conn_pid)
-    %{socket: socket, topic: topic, channel: channel} = conn_state
+  def do_handshake(conn_pid, conn_state) do
+    conn_state = Task.async(fn ->
+      %{socket: socket, topic: topic, channel: channel} = conn_state
 
-    socket |> send_magic_v2
-    socket |> identify(conn_state)
+      socket |> send_magic_v2
+      socket |> identify(conn_state)
 
-    # Producers don't have a channel, so they won't do this.
-    if channel do
-      socket |> subscribe(conn_state)
-    end
+      # Producers don't have a channel, so they won't do this.
+      if channel do
+        socket |> subscribe(conn_state)
+      end
+
+      conn_state
+    end) |> Task.await(conn_state.config.dial_timeout)
 
     {:ok, conn_state}
   end
