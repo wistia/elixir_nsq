@@ -673,8 +673,12 @@ defmodule NSQ.Consumer do
     end
   end
 
+  @doc """
+  Try to update RDY for a given connection, taking configuration and the
+  current state into account. Not for external use.
+  """
   @spec update_rdy(pid, connection, integer, cons_state) :: {:ok, cons_state}
-  def update_rdy(cons, conn, new_rdy, cons_state \\ nil) do
+  def update_rdy(cons, conn, new_rdy, cons_state) do
     cons_state = cons_state || get_state(cons)
     conn_info = fetch_conn_info(cons_state, get_conn_id(conn))
 
@@ -702,15 +706,11 @@ defmodule NSQ.Consumer do
     end
   end
 
-  defp calc_max_possible_rdy(cons_state, conn_info) do
-    rdy_count = conn_info.rdy_count
-    max_in_flight = cons_state.max_in_flight
-    total_rdy = total_rdy_count(cons_state)
-    max_in_flight - total_rdy + rdy_count
-  end
-
+  @doc """
+  Delay for a configured interval, then call update_rdy. Not for external use.
+  """
   @spec retry_rdy(pid, connection, integer, cons_state) :: {:ok, cons_state}
-  def retry_rdy(cons, conn, count, cons_state \\ nil) do
+  def retry_rdy(cons, conn, count, cons_state) do
     cons_state = cons_state || get_state(cons)
 
     delay = cons_state.config.rdy_retry_delay
@@ -725,8 +725,11 @@ defmodule NSQ.Consumer do
     {:ok, cons_state}
   end
 
+  @doc """
+  Send a RDY command for the given connection.
+  """
   @spec send_rdy(pid, connection, integer, cons_state) :: {:ok, cons_state}
-  def send_rdy(cons, {_id, pid} = conn, count, cons_state \\ nil) do
+  def send_rdy(cons, {_id, pid} = conn, count, cons_state) do
     cons_state = cons_state || get_state(cons)
 
     [last_rdy] = fetch_conn_info(cons_state, get_conn_id(conn), [:last_rdy])
@@ -955,4 +958,13 @@ defmodule NSQ.Consumer do
       update_conn_info(cons_state, get_conn_id(conn), %{retry_rdy_pid: nil})
     end
   end
+
+  @spec calc_max_possible_rdy(cons_state, map) :: integer
+  defp calc_max_possible_rdy(cons_state, conn_info) do
+    rdy_count = conn_info.rdy_count
+    max_in_flight = cons_state.max_in_flight
+    total_rdy = total_rdy_count(cons_state)
+    max_in_flight - total_rdy + rdy_count
+  end
+
 end
