@@ -79,7 +79,7 @@ defmodule NSQ.Consumer do
   use GenServer
   require Logger
   import NSQ.Protocol
-  import NSQ.SharedConnectionInfo
+  alias NSQ.ConnInfo, as: ConnInfo
 
   # ------------------------------------------------------- #
   # Module Attributes                                       #
@@ -88,7 +88,7 @@ defmodule NSQ.Consumer do
     channel: nil,
     config: %NSQ.Config{},
     conn_sup_pid: nil,
-    shared_conn_info_agent: nil,
+    conn_info_pid: nil,
     max_in_flight: 2500,
     topic: nil,
     message_handler: nil,
@@ -116,7 +116,7 @@ defmodule NSQ.Consumer do
   A map, but we can be more specific by asserting some entries that should be
   set for a connection's state map.
   """
-  @type cons_state :: %{conn_sup_pid: pid, config: NSQ.Config.t, shared_conn_info_agent: pid}
+  @type cons_state :: %{conn_sup_pid: pid, config: NSQ.Config.t, conn_info_pid: pid}
 
   # ------------------------------------------------------- #
   # Behaviour Implementation                                #
@@ -149,8 +149,8 @@ defmodule NSQ.Consumer do
     {:ok, conn_sup_pid} = NSQ.ConnectionSupervisor.start_link
     cons_state = %{cons_state | conn_sup_pid: conn_sup_pid}
 
-    {:ok, shared_conn_info_agent} = Agent.start_link(fn -> %{} end)
-    cons_state = %{cons_state | shared_conn_info_agent: shared_conn_info_agent}
+    {:ok, conn_info_pid} = Agent.start_link(fn -> %{} end)
+    cons_state = %{cons_state | conn_info_pid: conn_info_pid}
 
     cons_state = %{cons_state | max_in_flight: cons_state.config.max_in_flight}
 
@@ -378,7 +378,7 @@ defmodule NSQ.Consumer do
     # Terminate the connection for real.
     # TODO: Change this method to `kill_connection` and make `stop_connection`
     # graceful.
-    conn_id = get_conn_id(cons, nsqd)
+    conn_id = ConnInfo.conn_id(cons, nsqd)
     Supervisor.terminate_child(cons_state.conn_sup_pid, conn_id)
     {:ok, cons_state} = cleanup_connection(cons, nsqd, cons_state)
 
@@ -395,7 +395,7 @@ defmodule NSQ.Consumer do
   @spec cleanup_connection(pid, host_with_port, cons_state)
     :: {:ok, cons_state}
   def cleanup_connection(cons, nsqd, cons_state) do
-    conn_id = get_conn_id(cons, nsqd)
+    conn_id = ConnInfo.conn_id(cons, nsqd)
 
     # If a connection is terminated normally or non-normally, it will still be
     # listed in the supervision tree. Let's remove it when we clean up.
@@ -403,7 +403,7 @@ defmodule NSQ.Consumer do
 
     # Delete the connection info from the shared map so we don't use it to
     # perform calculations.
-    delete_conn_info(cons_state, conn_id)
+    ConnInfo.delete(cons_state, conn_id)
 
     {:ok, cons_state}
   end
@@ -647,8 +647,8 @@ defmodule NSQ.Consumer do
       """
       {:ok, cons_state}
     else
-      [remain, last_rdy] = fetch_conn_info(
-        cons_state, get_conn_id(conn), [:rdy_count, :last_rdy]
+      [remain, last_rdy] = ConnInfo.fetch(
+        cons_state, ConnInfo.conn_id(conn), [:rdy_count, :last_rdy]
       )
       desired_rdy = per_conn_max_in_flight(cons_state)
 
@@ -674,7 +674,7 @@ defmodule NSQ.Consumer do
   """
   @spec update_rdy(pid, connection, integer, cons_state) :: {:ok, cons_state}
   def update_rdy(cons, conn, new_rdy, cons_state) do
-    conn_info = fetch_conn_info(cons_state, get_conn_id(conn))
+    conn_info = ConnInfo.fetch(cons_state, ConnInfo.conn_id(conn))
 
     cancel_outstanding_rdy_retry(cons_state, conn)
 
@@ -712,7 +712,7 @@ defmodule NSQ.Consumer do
       :timer.sleep(delay)
       GenServer.call(cons, {:update_rdy, conn, count})
     end
-    update_conn_info(cons_state, get_conn_id(conn), %{retry_rdy_pid: retry_pid})
+    ConnInfo.update(cons_state, ConnInfo.conn_id(conn), %{retry_rdy_pid: retry_pid})
 
     {:ok, cons_state}
   end
@@ -722,7 +722,7 @@ defmodule NSQ.Consumer do
   """
   @spec send_rdy(connection, integer, cons_state) :: {:ok, cons_state}
   def send_rdy({_id, pid} = conn, count, cons_state) do
-    [last_rdy] = fetch_conn_info(cons_state, get_conn_id(conn), [:last_rdy])
+    [last_rdy] = ConnInfo.fetch(cons_state, ConnInfo.conn_id(conn), [:last_rdy])
 
     if count == 0 && last_rdy == 0 do
       {:ok, cons_state}
@@ -756,7 +756,7 @@ defmodule NSQ.Consumer do
   """
   @spec total_rdy_count(pid) :: integer
   def total_rdy_count(agent_pid) when is_pid(agent_pid) do
-    reduce_conn_info agent_pid, 0, fn({_, conn_info}, acc) ->
+    ConnInfo.reduce agent_pid, 0, fn({_, conn_info}, acc) ->
       acc + conn_info.rdy_count
     end
   end
@@ -766,7 +766,7 @@ defmodule NSQ.Consumer do
   for external use.
   """
   @spec total_rdy_count(cons_state) :: integer
-  def total_rdy_count(%{shared_conn_info_agent: agent_pid} = _cons_state) do
+  def total_rdy_count(%{conn_info_pid: agent_pid} = _cons_state) do
     total_rdy_count(agent_pid)
   end
 
@@ -838,13 +838,13 @@ defmodule NSQ.Consumer do
   @spec conn_already_discovered?(pid, connection, [host_with_port]) :: boolean
   defp conn_already_discovered?(cons, {conn_id, _}, discovered_nsqds) do
     Enum.any? discovered_nsqds, fn(nsqd) ->
-      get_conn_id(cons, nsqd) == conn_id
+      ConnInfo.conn_id(cons, nsqd) == conn_id
     end
   end
 
   @spec nsqd_already_has_connection?(host_with_port, pid, cons_state) :: boolean
   defp nsqd_already_has_connection?(nsqd, cons, cons_state) do
-    needle = get_conn_id(cons, nsqd)
+    needle = ConnInfo.conn_id(cons, nsqd)
     Enum.any? get_connections(cons_state), fn({conn_id, _}) ->
       conn_id == needle
     end
@@ -884,7 +884,7 @@ defmodule NSQ.Consumer do
 
   @spec conn_from_nsqd(pid, host_with_port, cons_state) :: connection
   defp conn_from_nsqd(cons, nsqd, cons_state) do
-    needle = get_conn_id(cons, nsqd)
+    needle = ConnInfo.conn_id(cons, nsqd)
     Enum.find get_connections(cons_state), fn({conn_id, _}) ->
       needle == conn_id
     end
@@ -907,8 +907,8 @@ defmodule NSQ.Consumer do
   defp give_up_rdy_for_idle_connections(cons, cons_state) do
     conns = get_connections(cons_state)
     Enum.map conns, fn(conn) ->
-      conn_id = get_conn_id(conn)
-      [last_msg_t, rdy_count] = fetch_conn_info(
+      conn_id = ConnInfo.conn_id(conn)
+      [last_msg_t, rdy_count] = ConnInfo.fetch(
         cons_state, conn_id, [:last_msg_timestamp, :rdy_count]
       )
       sec_since_last_msg = now - last_msg_t
@@ -944,7 +944,7 @@ defmodule NSQ.Consumer do
 
   @spec cancel_outstanding_rdy_retry(cons_state, connection) :: any
   defp cancel_outstanding_rdy_retry(cons_state, conn) do
-    conn_info = fetch_conn_info(cons_state, get_conn_id(conn))
+    conn_info = ConnInfo.fetch(cons_state, ConnInfo.conn_id(conn))
 
     # If this is for a connection that's retrying, kill the timer and clean up.
     if retry_pid = conn_info.retry_rdy_pid do
@@ -953,7 +953,7 @@ defmodule NSQ.Consumer do
         Process.exit(retry_pid, :normal)
       end
 
-      update_conn_info(cons_state, get_conn_id(conn), %{retry_rdy_pid: nil})
+      ConnInfo.update(cons_state, ConnInfo.conn_id(conn), %{retry_rdy_pid: nil})
     end
   end
 

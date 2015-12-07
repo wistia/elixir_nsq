@@ -14,7 +14,7 @@ defmodule NSQ.Producer do
     channel: nil,
     conn_sup_pid: nil,
     config: nil,
-    shared_conn_info_agent: nil
+    conn_info_pid: nil
   }
 
   # ------------------------------------------------------- #
@@ -24,8 +24,8 @@ defmodule NSQ.Producer do
     {:ok, conn_sup_pid} = NSQ.ConnectionSupervisor.start_link
     pro_state = %{pro_state | conn_sup_pid: conn_sup_pid}
 
-    {:ok, shared_conn_info_agent} = Agent.start_link(fn -> %{} end)
-    pro_state = %{pro_state | shared_conn_info_agent: shared_conn_info_agent}
+    {:ok, conn_info_pid} = Agent.start_link(fn -> %{} end)
+    pro_state = %{pro_state | conn_info_pid: conn_info_pid}
 
     {:ok, _pro_state} = connect_to_nsqds(pro_state.config.nsqds, self, pro_state)
   end

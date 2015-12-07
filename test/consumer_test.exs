@@ -4,7 +4,7 @@ defmodule NSQ.ConsumerTest do
   alias NSQ.Consumer, as: Cons
   alias HTTPotion, as: HTTP
   alias NSQ.Connection, as: Conn
-  import NSQ.SharedConnectionInfo
+  alias NSQ.ConnInfo, as: ConnInfo
   require Logger
 
   @test_topic "__nsq_consumer_test_topic__"
@@ -206,8 +206,8 @@ defmodule NSQ.ConsumerTest do
     assert Cons.total_rdy_count(cons_state) == 2
     assert cons_state.backoff_counter == 0
     assert cons_state.backoff_duration == 0
-    [1, 1] = fetch_conn_info(cons_state, conn1, [:rdy_count, :last_rdy])
-    [1, 1] = fetch_conn_info(cons_state, conn2, [:rdy_count, :last_rdy])
+    [1, 1] = ConnInfo.fetch(cons_state, conn1, [:rdy_count, :last_rdy])
+    [1, 1] = ConnInfo.fetch(cons_state, conn2, [:rdy_count, :last_rdy])
 
     # Our message handler enters into backoff mode and requeues the message
     # 1 second from now.
@@ -223,8 +223,8 @@ defmodule NSQ.ConsumerTest do
     cons_state = Cons.get_state(consumer)
     assert cons_state.backoff_counter == 1
     assert cons_state.backoff_duration == 200
-    [0, 0] = fetch_conn_info(cons_state, conn1, [:rdy_count, :last_rdy])
-    [0, 0] = fetch_conn_info(cons_state, conn2, [:rdy_count, :last_rdy])
+    [0, 0] = ConnInfo.fetch(cons_state, conn1, [:rdy_count, :last_rdy])
+    [0, 0] = ConnInfo.fetch(cons_state, conn2, [:rdy_count, :last_rdy])
     assert Cons.total_rdy_count(cons_state) == 0
 
     # Wait ~200ms for resume to be called, which should put us in "test the
@@ -232,10 +232,10 @@ defmodule NSQ.ConsumerTest do
     # will immediately follow up by sending the message we requeued again.
     :timer.sleep(250)
     cons_state = Cons.get_state(consumer)
-    assert 1 == fetch_conn_info(cons_state, conn1, :rdy_count) +
-      fetch_conn_info(cons_state, conn2, :rdy_count)
-    assert 1 == fetch_conn_info(cons_state, conn1, :last_rdy) +
-      fetch_conn_info(cons_state, conn2, :last_rdy)
+    assert 1 == ConnInfo.fetch(cons_state, conn1, :rdy_count) +
+      ConnInfo.fetch(cons_state, conn2, :rdy_count)
+    assert 1 == ConnInfo.fetch(cons_state, conn1, :last_rdy) +
+      ConnInfo.fetch(cons_state, conn2, :last_rdy)
     assert Cons.total_rdy_count(cons_state) == 1
     receive do
       :handled -> :ok
@@ -246,17 +246,17 @@ defmodule NSQ.ConsumerTest do
     # When the message handler fails again, we go back to backoff mode.
     :timer.sleep(50)
     cons_state = Cons.get_state(consumer)
-    [0, 0] = fetch_conn_info(cons_state, conn1, [:rdy_count, :last_rdy])
-    [0, 0] = fetch_conn_info(cons_state, conn2, [:rdy_count, :last_rdy])
+    [0, 0] = ConnInfo.fetch(cons_state, conn1, [:rdy_count, :last_rdy])
+    [0, 0] = ConnInfo.fetch(cons_state, conn2, [:rdy_count, :last_rdy])
     assert Cons.total_rdy_count(cons_state) == 0
 
     # Then we'll go into "test the waters mode" again in 200ms.
     :timer.sleep(250)
     cons_state = Cons.get_state(consumer)
-    assert 1 == fetch_conn_info(cons_state, conn1, :rdy_count) +
-      fetch_conn_info(cons_state, conn2, :rdy_count)
-    assert 1 == fetch_conn_info(cons_state, conn1, :last_rdy) +
-      fetch_conn_info(cons_state, conn2, :last_rdy)
+    assert 1 == ConnInfo.fetch(cons_state, conn1, :rdy_count) +
+      ConnInfo.fetch(cons_state, conn2, :rdy_count)
+    assert 1 == ConnInfo.fetch(cons_state, conn1, :last_rdy) +
+      ConnInfo.fetch(cons_state, conn2, :last_rdy)
     assert Cons.total_rdy_count(cons_state) == 1
 
     # After the message handler runs successfully, it decrements the
@@ -277,8 +277,8 @@ defmodule NSQ.ConsumerTest do
     end
     :timer.sleep(500)
     cons_state = Cons.get_state(consumer)
-    [50, 50] = fetch_conn_info(cons_state, conn1, [:rdy_count, :last_rdy])
-    [50, 50] = fetch_conn_info(cons_state, conn2, [:rdy_count, :last_rdy])
+    [50, 50] = ConnInfo.fetch(cons_state, conn1, [:rdy_count, :last_rdy])
+    [50, 50] = ConnInfo.fetch(cons_state, conn2, [:rdy_count, :last_rdy])
     assert Cons.total_rdy_count(cons_state) == 100
   end
 
@@ -303,17 +303,17 @@ defmodule NSQ.ConsumerTest do
     HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
     refute_receive :handled, 500
     cons_state = Cons.get_state(cons)
-    assert fetch_conn_info(cons_state, conn, :retry_rdy_pid) == nil
+    assert ConnInfo.fetch(cons_state, conn, :retry_rdy_pid) == nil
 
     GenServer.call(cons, {:update_rdy, conn, 1})
     refute_receive :handled, 500
     cons_state = Cons.get_state(cons)
-    assert fetch_conn_info(cons_state, conn, :retry_rdy_pid) |> is_pid
+    assert ConnInfo.fetch(cons_state, conn, :retry_rdy_pid) |> is_pid
 
     Cons.change_max_in_flight(cons_sup_pid, 1)
     assert_receive :handled, 500
     cons_state = Cons.get_state(cons)
-    assert fetch_conn_info(cons_state, conn, :retry_rdy_pid) == nil
+    assert ConnInfo.fetch(cons_state, conn, :retry_rdy_pid) == nil
   end
 
   test "rdy redistribution when number of connections > max in flight" do
@@ -332,8 +332,8 @@ defmodule NSQ.ConsumerTest do
     cons_state = Cons.get_state(cons)
     [conn1, conn2] = Cons.get_connections(cons)
     assert Cons.total_rdy_count(cons_state) == 1
-    assert 1 == fetch_conn_info(cons_state, conn1, :rdy_count) +
-      fetch_conn_info(cons_state, conn2, :rdy_count)
+    assert 1 == ConnInfo.fetch(cons_state, conn1, :rdy_count) +
+      ConnInfo.fetch(cons_state, conn2, :rdy_count)
     :timer.sleep(1500)
 
     IO.puts "Letting RDY redistribute 10 times..."
@@ -341,8 +341,8 @@ defmodule NSQ.ConsumerTest do
       :timer.sleep(1000)
       IO.puts i
       {
-        rdy1 + fetch_conn_info(cons_state, conn1, :rdy_count),
-        rdy2 + fetch_conn_info(cons_state, conn2, :rdy_count)
+        rdy1 + ConnInfo.fetch(cons_state, conn1, :rdy_count),
+        rdy2 + ConnInfo.fetch(cons_state, conn2, :rdy_count)
       }
     end
 

@@ -8,16 +8,16 @@ defmodule NSQ.ConnectionSupervisor do
   # ------------------------------------------------------- #
   # Directives                                              #
   # ------------------------------------------------------- #
-  import NSQ.SharedConnectionInfo
   use Supervisor
-
-  def start_link(opts \\ []) do
-    Supervisor.start_link(__MODULE__, :ok, opts)
-  end
+  alias NSQ.ConnInfo, as: ConnInfo
 
   # ------------------------------------------------------- #
   # Behaviour Implementation                                #
   # ------------------------------------------------------- #
+  def start_link(opts \\ []) do
+    Supervisor.start_link(__MODULE__, :ok, opts)
+  end
+
   def start_child(parent, nsqd, parent_state \\ nil, opts \\ []) do
     parent_state = parent_state || GenServer.call(parent, :state)
     conn_sup_pid = parent_state.conn_sup_pid
@@ -27,9 +27,9 @@ defmodule NSQ.ConnectionSupervisor do
       parent_state.config,
       parent_state.topic,
       parent_state.channel,
-      parent_state.shared_conn_info_agent
+      parent_state.conn_info_pid
     ]
-    conn_id = get_conn_id(parent, nsqd)
+    conn_id = ConnInfo.conn_id(parent, nsqd)
 
     # When using nsqlookupd, we expect connections will be naturally
     # rediscovered if they fail.

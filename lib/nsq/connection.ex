@@ -15,7 +15,7 @@ defmodule NSQ.Connection do
   require Logger
   use Connection
   import NSQ.Protocol
-  import NSQ.SharedConnectionInfo
+  alias NSQ.ConnInfo, as: ConnInfo
 
   # ------------------------------------------------------- #
   # Type Definitions                                        #
@@ -60,7 +60,7 @@ defmodule NSQ.Connection do
     max_rdy: 2500,
     reconnect_attempts: 0,
     stop_flag: false,
-    shared_conn_info_agent: nil
+    conn_info_pid: nil
   }
 
   # ------------------------------------------------------- #
@@ -210,14 +210,14 @@ defmodule NSQ.Connection do
   # ------------------------------------------------------- #
   @spec start_link(pid, host_with_port, NSQ.Config.t, String.t, String.t, pid, list) ::
     {:ok, pid}
-  def start_link(parent, nsqd, config, topic, channel, shared_conn_info_agent, opts \\ []) do
+  def start_link(parent, nsqd, config, topic, channel, conn_info_pid, opts \\ []) do
     state = %{@initial_state |
       parent: parent,
       nsqd: nsqd,
       config: config,
       topic: topic,
       channel: channel,
-      shared_conn_info_agent: shared_conn_info_agent
+      conn_info_pid: conn_info_pid
     }
     {:ok, _pid} = Connection.start_link(__MODULE__, state, opts)
   end
@@ -422,7 +422,7 @@ defmodule NSQ.Connection do
 
   @spec received_message(conn_state) :: conn_state
   defp received_message(state) do
-    update_conn_info state, fn(info) ->
+    ConnInfo.update state, fn(info) ->
       %{info |
         rdy_count: info.rdy_count - 1,
         messages_in_flight: info.messages_in_flight + 1,
@@ -434,7 +434,7 @@ defmodule NSQ.Connection do
 
   @spec decrement_messages_in_flight(conn_state) :: conn_state
   defp decrement_messages_in_flight(state) do
-    update_conn_info state, fn(info) ->
+    ConnInfo.update state, fn(info) ->
       %{info | messages_in_flight: info.messages_in_flight - 1}
     end
     state
@@ -442,7 +442,7 @@ defmodule NSQ.Connection do
 
   @spec update_rdy_count(conn_state, integer) :: conn_state
   defp update_rdy_count(state, rdy_count) do
-    update_conn_info(state, %{rdy_count: rdy_count, last_rdy: rdy_count})
+    ConnInfo.update(state, %{rdy_count: rdy_count, last_rdy: rdy_count})
     state
   end
 
@@ -510,7 +510,7 @@ defmodule NSQ.Connection do
 
   @spec init_conn_info(conn_state) :: any
   defp init_conn_info(state) do
-    update_conn_info state, %{
+    ConnInfo.update state, %{
       max_rdy: state.max_rdy,
       rdy_count: 0,
       last_rdy: 0,
