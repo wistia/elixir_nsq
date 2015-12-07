@@ -30,9 +30,11 @@ defmodule ElixirNsq.Mixfile do
     [
       {:connection, "~> 1.0.1"},
       {:poison, "~> 1.5.0"},
-      {:secure_random, "~> 0.2"},
-      {:ibrowse, github: "cmullaparthi/ibrowse", tag: "v4.1.2"},
-      {:httpotion, "~> 2.1.0"}
+
+      # testing
+      {:secure_random, "~> 0.2", only: :test},
+      {:ibrowse, github: "cmullaparthi/ibrowse", tag: "v4.1.2", only: :test},
+      {:httpotion, "~> 2.1.0", only: :test}
     ]
   end
 end
