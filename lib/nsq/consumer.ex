@@ -1,6 +1,6 @@
 defmodule NSQ.Consumer do
   @moduledoc """
-  An consumer is a process that creates connections to NSQD to receive messages
+  A consumer is a process that creates connections to NSQD to receive messages
   for a specific topic and channel. It has three primary functions:
 
   1. Provide a simple interface for a user to setup and configure message

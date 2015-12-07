@@ -1,13 +1,13 @@
 defmodule NSQ.ProducerSupervisor do
   use Supervisor
 
-  def start_link(config, topic, opts \\ []) do
-    Supervisor.start_link(__MODULE__, {config, topic}, opts)
+  def start_link(topic, config, opts \\ []) do
+    Supervisor.start_link(__MODULE__, {topic, config}, opts)
   end
 
-  def init({config, topic}) do
+  def init({topic, config}) do
     children = [
-      worker(NSQ.Producer, [config, topic])
+      worker(NSQ.Producer, [topic, config])
     ]
     supervise(children, strategy: :one_for_one)
   end

@@ -17,7 +17,7 @@ defmodule NSQ.ProducerTest do
 
   test "#new starts a new producer, discoverable via nsqlookupd" do
     {:ok, producer} = NSQ.Producer.new(
-      %NSQ.Config{nsqds: @configured_nsqds}, @test_topic
+      @test_topic, %NSQ.Config{nsqds: @configured_nsqds}
     )
 
     # Produce a ton of messages so we're "guaranteed" both our nsqds have
@@ -36,7 +36,7 @@ defmodule NSQ.ProducerTest do
 
   test "messages added via pub are handled by a consumer" do
     {:ok, producer} = NSQ.Producer.new(
-      %NSQ.Config{nsqds: @configured_nsqds}, @test_topic
+      @test_topic, %NSQ.Config{nsqds: @configured_nsqds}
     )
 
     test_pid = self
@@ -56,7 +56,7 @@ defmodule NSQ.ProducerTest do
 
   test "messages added via mpub are handled by a consumer" do
     {:ok, producer} = NSQ.Producer.new(
-      %NSQ.Config{nsqds: @configured_nsqds}, @test_topic
+      @test_topic, %NSQ.Config{nsqds: @configured_nsqds}
     )
 
     test_pid = self

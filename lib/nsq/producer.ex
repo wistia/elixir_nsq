@@ -1,4 +1,13 @@
 defmodule NSQ.Producer do
+  @moduledoc """
+  A producer is a process that connects to one or many NSQDs and publishes
+  messages.
+
+  ## Interface
+
+  To initialize a producer, use the `new`
+  """
+
   # ------------------------------------------------------- #
   # Directives                                              #
   # ------------------------------------------------------- #
@@ -53,11 +62,11 @@ defmodule NSQ.Producer do
   # ------------------------------------------------------- #
   # API Definitions                                         #
   # ------------------------------------------------------- #
-  def new(config, topic) do
-    NSQ.ProducerSupervisor.start_link(config, topic)
+  def new(topic, config) do
+    NSQ.ProducerSupervisor.start_link(topic, config)
   end
 
-  def start_link(config, topic) do
+  def start_link(topic, config) do
     {:ok, config} = NSQ.Config.validate(config || %NSQ.Config{})
     {:ok, config} = NSQ.Config.normalize(config)
     unless is_valid_topic_name?(topic), do: raise "Invalid topic name #{topic}"
