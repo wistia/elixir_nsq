@@ -183,7 +183,7 @@ defmodule NSQ.Consumer do
   @doc """
   Called from `NSQ.Message.fin/1`. Not for external use.
   """
-  @spec handle_call({:start_stop_continue_backoff, term}, {reference, pid}, cons_state) ::
+  @spec handle_call({:start_stop_continue_backoff, atom}, {reference, pid}, cons_state) ::
     {:reply, :ok, cons_state}
   def handle_call({:start_stop_continue_backoff, backoff_flag}, _from, cons_state) do
     {:ok, cons_state} = start_stop_continue_backoff(self, backoff_flag, cons_state)
@@ -337,7 +337,7 @@ defmodule NSQ.Consumer do
   """
   @spec connect_to_nsqd(host_with_port, pid, cons_state) :: {:ok, cons_state}
   def connect_to_nsqd(nsqd, cons, cons_state) do
-    {:ok, pid} = NSQ.ConnectionSupervisor.start_child(
+    {:ok, _pid} = NSQ.ConnectionSupervisor.start_child(
       cons, nsqd, cons_state
     )
 
@@ -348,7 +348,7 @@ defmodule NSQ.Consumer do
     remaining_rdy = cons_state.max_in_flight - total_rdy_count(cons_state)
     if remaining_rdy > 0 do
       conn = conn_from_nsqd(cons, nsqd, cons_state)
-      {:ok, cons_state} = send_rdy(cons, conn, 1, cons_state)
+      {:ok, cons_state} = send_rdy(conn, 1, cons_state)
     end
 
     {:ok, cons_state}
@@ -436,8 +436,8 @@ defmodule NSQ.Consumer do
   Initialized from NSQ.ConsumerSupervisor, sends the consumer a message on a
   fixed interval.
   """
-  @spec rdy_loop(pid, list) :: any
-  def rdy_loop(cons, opts \\ []) do
+  @spec rdy_loop(pid) :: any
+  def rdy_loop(cons) do
     cons_state = get_state(cons)
     GenServer.call(cons, :redistribute_rdy)
     delay = cons_state.config.rdy_redistribute_interval
@@ -449,8 +449,8 @@ defmodule NSQ.Consumer do
   Initialized from NSQ.ConsumerSupervisor, sends the consumer a message on a
   fixed interval.
   """
-  @spec rdy_loop(pid, list) :: any
-  def discovery_loop(cons, opts \\ []) do
+  @spec rdy_loop(pid) :: any
+  def discovery_loop(cons) do
     cons_state = get_state(cons)
     %NSQ.Config{
       lookupd_poll_interval: poll_interval,
@@ -472,29 +472,24 @@ defmodule NSQ.Consumer do
   end
 
   @doc """
-  Called from `handle_call/3`. Not for external use.
+  Called from `handle_call/3` when we need to decide what to do about the
+  current backoff state. Not for external use.
   """
-  @spec start_stop_continue_backoff(pid, term, cons_state) :: {:ok, cons_state}
-  def start_stop_continue_backoff(cons, backoff_signal, cons_state \\ nil) do
-    cons_state = cons_state || get_state(cons)
-
-    backoff_updated = false
-    backoff_counter = cons_state.backoff_counter
-    cond do
+  @spec start_stop_continue_backoff(pid, atom, cons_state) :: {:ok, cons_state}
+  def start_stop_continue_backoff(cons, backoff_signal, cons_state) do
+    {backoff_updated, backoff_counter} = cond do
       backoff_signal == :resume ->
-        backoff_updated = true
-        backoff_counter = backoff_counter - 1
+        {true, cons_state.backoff_counter - 1}
       backoff_signal == :backoff ->
-        backoff_updated = true
-        backoff_counter = backoff_counter + 1
+        {true, cons_state.backoff_counter + 1}
       true ->
-        backoff_updated = false
+        {false, cons_state.backoff_counter}
     end
     cons_state = %{cons_state | backoff_counter: backoff_counter}
 
     cond do
       backoff_counter == 0 && backoff_updated ->
-        count = per_conn_max_in_flight(cons, cons_state)
+        count = per_conn_max_in_flight(cons_state)
         Logger.warn "exiting backoff, returning all to RDY #{count}"
         cons_state = Enum.reduce get_connections(cons_state), cons_state, fn(conn, last_state) ->
           {:ok, new_state} = update_rdy(cons, conn, count, last_state)
@@ -544,11 +539,11 @@ defmodule NSQ.Consumer do
   end
 
   @doc """
+  Try resuming from backoff in a few seconds. Not for external use.
   """
   @spec resume_from_backoff_later(pid, integer, cons_state) ::
     {:ok, cons_state}
   def resume_from_backoff_later(cons, duration, cons_state) do
-    cons_state = cons_state || get_state(cons)
     Task.start_link fn ->
       :timer.sleep(duration)
       GenServer.cast(cons, :resume)
@@ -620,7 +615,7 @@ defmodule NSQ.Consumer do
       end
 
       # Free up any connections that are RDY but not processing messages.
-      possible_conns = give_up_rdy_for_idle_connections(cons, cons_state)
+      give_up_rdy_for_idle_connections(cons, cons_state)
 
       # Determine how much RDY we can distribute. This needs to happen before
       # we give up RDY, or max_in_flight will end up equalling RDY.
@@ -655,7 +650,7 @@ defmodule NSQ.Consumer do
       [remain, last_rdy] = fetch_conn_info(
         cons_state, get_conn_id(conn), [:rdy_count, :last_rdy]
       )
-      desired_rdy = per_conn_max_in_flight(cons, cons_state)
+      desired_rdy = per_conn_max_in_flight(cons_state)
 
       if remain <= 1 || remain < (last_rdy / 4) || (desired_rdy > 0 && desired_rdy < remain) do
         Logger.debug """
@@ -679,7 +674,6 @@ defmodule NSQ.Consumer do
   """
   @spec update_rdy(pid, connection, integer, cons_state) :: {:ok, cons_state}
   def update_rdy(cons, conn, new_rdy, cons_state) do
-    cons_state = cons_state || get_state(cons)
     conn_info = fetch_conn_info(cons_state, get_conn_id(conn))
 
     cancel_outstanding_rdy_retry(cons_state, conn)
@@ -702,7 +696,7 @@ defmodule NSQ.Consumer do
       end
       {:ok, cons_state}
     else
-      {:ok, _cons_state} = send_rdy(cons, conn, new_rdy, cons_state)
+      {:ok, _cons_state} = send_rdy(conn, new_rdy, cons_state)
     end
   end
 
@@ -711,8 +705,6 @@ defmodule NSQ.Consumer do
   """
   @spec retry_rdy(pid, connection, integer, cons_state) :: {:ok, cons_state}
   def retry_rdy(cons, conn, count, cons_state) do
-    cons_state = cons_state || get_state(cons)
-
     delay = cons_state.config.rdy_retry_delay
     Logger.debug("(#{inspect conn}) retry RDY in #{delay / 1000} seconds")
 
@@ -728,10 +720,8 @@ defmodule NSQ.Consumer do
   @doc """
   Send a RDY command for the given connection.
   """
-  @spec send_rdy(pid, connection, integer, cons_state) :: {:ok, cons_state}
-  def send_rdy(cons, {_id, pid} = conn, count, cons_state) do
-    cons_state = cons_state || get_state(cons)
-
+  @spec send_rdy(connection, integer, cons_state) :: {:ok, cons_state}
+  def send_rdy({_id, pid} = conn, count, cons_state) do
     [last_rdy] = fetch_conn_info(cons_state, get_conn_id(conn), [:last_rdy])
 
     if count == 0 && last_rdy == 0 do
@@ -740,19 +730,30 @@ defmodule NSQ.Consumer do
       # We intentionally don't match this GenServer.call. If the socket isn't
       # set up or is erroring out, we don't want to propagate that connection
       # error to the consumer.
-      result = NSQ.Connection.cmd_noresponse(pid, {:rdy, count})
+      NSQ.Connection.cmd_noresponse(pid, {:rdy, count})
       {:ok, cons_state}
     end
   end
 
-  @spec per_conn_max_in_flight(pid, cons_state) :: integer
-  def per_conn_max_in_flight(cons, cons_state \\ nil) do
-    cons_state = cons_state || get_state(cons)
+  @doc """
+  Returns how much `max_in_flight` should be distributed to each connection.
+  If `max_in_flight` is less than the number of connections, then this always
+  returns 1 and they are randomly distributed via `redistribute_rdy`. Not for
+  external use.
+  """
+  @spec per_conn_max_in_flight(cons_state) :: integer
+  def per_conn_max_in_flight(cons_state) do
     max_in_flight = cons_state.max_in_flight
     conn_count = count_connections(cons_state)
     min(max(1, max_in_flight / conn_count), max_in_flight) |> round
   end
 
+  @doc """
+  Each connection is responsible for maintaining its own rdy_count in ConnInfo.
+  This function sums all the values of rdy_count for each connection, which
+  lets us get an accurate picture of a consumer's total RDY count. Not for
+  external use.
+  """
   @spec total_rdy_count(pid) :: integer
   def total_rdy_count(agent_pid) when is_pid(agent_pid) do
     reduce_conn_info agent_pid, 0, fn({_, conn_info}, acc) ->
@@ -760,20 +761,34 @@ defmodule NSQ.Consumer do
     end
   end
 
+  @doc """
+  Convenience function; uses the consumer state to get the conn info pid. Not
+  for external use.
+  """
   @spec total_rdy_count(cons_state) :: integer
   def total_rdy_count(%{shared_conn_info_agent: agent_pid} = _cons_state) do
     total_rdy_count(agent_pid)
   end
 
+  @doc """
+  Public function to change `max_in_flight` for a consumer. The new value will
+  be balanced across connections.
+  """
   @spec change_max_in_flight(pid, integer) :: {:ok, :ok}
   def change_max_in_flight(sup_pid, new_max_in_flight) do
     cons = get(sup_pid)
     GenServer.call(cons, {:max_in_flight, new_max_in_flight})
   end
 
+  @doc """
+  Iterate over all listed connections and delete the ones that are dead. This
+  exists because it is difficult to reliably clean up a connection immediately
+  after it is terminated (it might still be running). This function runs in the
+  discovery loop to provide consistency.
+  """
   @spec delete_dead_connections(cons_state) :: {:ok, cons_state}
   def delete_dead_connections(state) do
-    Enum.map get_connections(state), fn({conn_id, pid} = conn) ->
+    Enum.map get_connections(state), fn({conn_id, pid}) ->
       unless Process.alive?(pid) do
         Supervisor.delete_child(state.conn_sup_pid, conn_id)
       end
@@ -781,12 +796,18 @@ defmodule NSQ.Consumer do
     {:ok, state}
   end
 
-  # The end-user will be targeting the supervisor, but it's the consumer that
-  # can actually handle the command.
+  @doc """
+  NSQ.Consumer.new actually returns the supervisor pid so that we can
+  effectively recover from consumer crashes. This function takes the supervisor
+  pid and returns the consumer pid. We use this for public facing functions so
+  that the end user can simply target the supervisor, e.g.
+  `NSQ.Consumer.change_max_in_flight(supervisor_pid, 100)`. Not for external
+  use.
+  """
   @spec get(pid) :: pid
   def get(sup_pid) do
     children = Supervisor.which_children(sup_pid)
-    child = Enum.find(children, fn({kind, pid, _, _}) -> kind == NSQ.Consumer end)
+    child = Enum.find(children, fn({kind, _, _, _}) -> kind == NSQ.Consumer end)
     {_, pid, _, _} = child
     pid
   end
@@ -822,8 +843,7 @@ defmodule NSQ.Consumer do
   end
 
   @spec nsqd_already_has_connection?(host_with_port, pid, cons_state) :: boolean
-  defp nsqd_already_has_connection?(nsqd, cons, cons_state \\ nil) do
-    cons_state = cons_state || get_state(cons)
+  defp nsqd_already_has_connection?(nsqd, cons, cons_state) do
     needle = get_conn_id(cons, nsqd)
     Enum.any? get_connections(cons_state), fn({conn_id, _}) ->
       conn_id == needle
@@ -862,33 +882,11 @@ defmodule NSQ.Consumer do
       )
   end
 
-  # TODO: We can do this with a fold or reduce instead of recursion
-  @spec connections_maybe_update_rdy([connection], pid, cons_state) ::
-    {:ok, cons_state}
-  defp connections_maybe_update_rdy(connections, cons, cons_state) do
-    if connections == [] do
-      {:ok, cons_state}
-    else
-      [conn|rest] = connections
-      {:ok, cons_state} = maybe_update_rdy(cons, conn, cons_state)
-      connections_maybe_update_rdy(rest, cons, cons_state)
-    end
-  end
-
   @spec conn_from_nsqd(pid, host_with_port, cons_state) :: connection
-  defp conn_from_nsqd(cons, nsqd, cons_state \\ nil) do
-    cons_state = cons_state || get_state(cons)
+  defp conn_from_nsqd(cons, nsqd, cons_state) do
     needle = get_conn_id(cons, nsqd)
-    Enum.find get_connections(cons_state), fn({conn_id, pid}) ->
+    Enum.find get_connections(cons_state), fn({conn_id, _}) ->
       needle == conn_id
-    end
-  end
-
-  @spec pid_from_nsqd(pid, host_with_port, cons_state) :: pid
-  defp pid_from_nsqd(cons, nsqd, cons_state \\ nil) do
-    case conn_from_nsqd(cons, nsqd, cons_state) do
-      nil -> nil
-      {conn_id, pid} -> pid
     end
   end
 
@@ -951,7 +949,7 @@ defmodule NSQ.Consumer do
     # If this is for a connection that's retrying, kill the timer and clean up.
     if retry_pid = conn_info.retry_rdy_pid do
       if Process.alive?(retry_pid) do
-        Logger.warn("(#{inspect conn}) rdy retry pid #{inspect retry_pid} detected, killing")
+        Logger.debug("(#{inspect conn}) rdy retry pid #{inspect retry_pid} detected, killing")
         Process.exit(retry_pid, :normal)
       end
 
