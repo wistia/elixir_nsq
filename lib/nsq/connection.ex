@@ -288,14 +288,21 @@ defmodule NSQ.Connection do
   after the handshake. We send each incoming NSQ message as an erlang message
   back to the connection for handling.
   """
-  def recv_nsq_messages(sock, conn) do
-    {:ok, <<msg_size :: size(32)>>} = :gen_tcp.recv(sock, 4)
-    {:ok, raw_msg_data} = :gen_tcp.recv(sock, msg_size)
-
-    decoded = decode(raw_msg_data)
-    GenServer.cast(conn, {:nsq_msg, decoded})
-
-    recv_nsq_messages(sock, conn)
+  def recv_nsq_messages(sock, conn, timeout) do
+    case :gen_tcp.recv(sock, 4, timeout) do
+      {:error, :timeout} ->
+        # If publishing is quiet, we won't receive any messages in the timeout.
+        # This is fine. Let's just try again!
+        recv_nsq_messages(sock, conn, timeout)
+      {:ok, <<msg_size :: size(32)>>} ->
+        # Got a message! Decode it and let the connection know. We just
+        # received data on the socket to get the size of this message, so if we
+        # timeout in here, that's probably indicative of a problem.
+        {:ok, raw_msg_data} = :gen_tcp.recv(sock, msg_size, timeout)
+        decoded = decode(raw_msg_data)
+        GenServer.cast(conn, {:nsq_msg, decoded})
+        recv_nsq_messages(sock, conn, timeout)
+    end
   end
 
   @doc """
@@ -497,7 +504,11 @@ defmodule NSQ.Connection do
 
   @spec start_receiving_messages(pid, conn_state) :: {:ok, conn_state}
   defp start_receiving_messages(socket, state) do
-    reader_pid = spawn_link __MODULE__, :recv_nsq_messages, [socket, self]
+    reader_pid = spawn_link(
+      __MODULE__,
+      :recv_nsq_messages,
+      [socket, self, state.config.read_timeout]
+    )
     state = %{state | reader_pid: reader_pid}
     GenServer.cast(self, :flush_cmd_queue)
     {:ok, state}
