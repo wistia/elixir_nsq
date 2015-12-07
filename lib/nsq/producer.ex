@@ -173,8 +173,8 @@ defmodule NSQ.Producer do
   can actually handle the command.
   """
   def get(sup_pid) do
-    children = Supervisor.which_children(sup_pid)
-    child = Enum.find(children, fn({kind, _, _, _}) -> kind == NSQ.Producer end)
+    child = Supervisor.which_children(sup_pid)
+      |> Enum.find(fn({kind, _, _, _}) -> kind == NSQ.Producer end)
     {_, pid, _, _} = child
     pid
   end
@@ -185,15 +185,15 @@ defmodule NSQ.Producer do
 
   # Used to DRY up handle_call({:pub, ...).
   defp do_pub(topic, data, pro_state) do
-    conn_pid = random_connection_pid(pro_state)
-    {:ok, resp} = NSQ.Connection.cmd(conn_pid, {:pub, topic, data})
+    {:ok, resp} = random_connection_pid(pro_state)
+      |> NSQ.Connection.cmd({:pub, topic, data})
     {:reply, {:ok, resp}, pro_state}
   end
 
   # Used to DRY up handle_call({:mpub, ...).
   defp do_mpub(topic, data, pro_state) do
-    conn_pid = random_connection_pid(pro_state)
-    {:ok, resp} = NSQ.Connection.cmd(conn_pid, {:mpub, topic, data})
+    {:ok, resp} = random_connection_pid(pro_state)
+      |> NSQ.Connection.cmd({:mpub, topic, data})
     {:reply, {:ok, resp}, pro_state}
   end
 end
