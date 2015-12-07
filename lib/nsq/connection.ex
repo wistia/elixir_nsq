@@ -233,13 +233,29 @@ defmodule NSQ.Connection do
     GenServer.call(pid, :state)
   end
 
-  @spec close(pid, conn_state) :: {:ok, conn_state}
+  @spec close(pid, conn_state) :: any
   def close(conn, conn_state \\ nil) do
     conn_state = conn_state || get_state(conn)
-    Process.unlink(conn_state.reader_pid)
-    Process.exit(conn_state.reader_pid, :normal)
-    :gen_tcp.send(conn.socket, encode(:cls))
-    {:ok, conn_state}
+
+    # send a CLS command and expect CLOSE_WAIT in response
+    {:ok, "CLOSE_WAIT"} = cmd(conn, :cls)
+
+    # grace period: poll once per second until zero are in flight
+    result = wait_for_zero_in_flight_with_timeout(
+      conn_state.conn_info_pid,
+      ConnInfo.conn_id(conn_state),
+      conn_state.msg_timeout
+    )
+
+    # either way, we're exiting
+    case result do
+      :ok ->
+        Logger.warn "No more messages in flight. Exiting."
+      :timeout ->
+        Logger.error "Timed out waiting for messages to finish. Exiting anyway."
+    end
+
+    Process.exit(self, :normal)
   end
 
   @spec nsqds_from_lookupds([host_with_port], String.t) :: [host_with_port]
@@ -569,5 +585,26 @@ defmodule NSQ.Connection do
       last_msg_timestamp: now,
       retry_rdy_pid: nil
     }
+  end
+
+  @spec wait_for_zero_in_flight(pid, binary) :: any
+  defp wait_for_zero_in_flight(agent_pid, conn_id) do
+    in_flight = ConnInfo.fetch(agent_pid, conn_id, [:messages_in_flight])
+    if in_flight <= 0 do
+      :ok
+    else
+      :timer.sleep(1000)
+      wait_for_zero_in_flight(agent_pid, conn_id)
+    end
+  end
+
+  @spec wait_for_zero_in_flight_with_timeout(pid, binary, integer) :: any
+  defp wait_for_zero_in_flight_with_timeout(agent_pid, conn_id, timeout) do
+    try do
+      Task.async(fn -> wait_for_zero_in_flight(agent_pid, conn_id) end)
+        |> Task.await(timeout)
+    catch
+      :timeout, _ -> :timeout
+    end
   end
 end
