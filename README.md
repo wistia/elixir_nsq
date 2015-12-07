@@ -18,8 +18,8 @@ See these resources for more info on building client libraries:
 - [x] Test discovery via nsqlookupd for consumers
 - [x] Test connection failure behavior
 - [ ] Set connection's max_rdy from IDENTIFY result
-- [ ] Respect configured read_timeout
-- [ ] Respect configured write_timeout
+- [x] Respect configured read_timeout
+- [x] Respect configured write_timeout
 - [ ] Handle errors reported by NSQD
 - [ ] Graceful connection closing
 - [ ] TLS support
