@@ -25,7 +25,7 @@ defmodule NSQ.ConsumerTest do
     {:ok, cons_sup_pid} = NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
       lookupd_poll_interval: 500,
       nsqds: [{"127.0.0.1", 6750}],
-      message_handler: fn(body, msg) ->
+      message_handler: fn(_body, _msg) ->
         send(test_pid, :handled)
         :ok
       end
@@ -94,7 +94,6 @@ defmodule NSQ.ConsumerTest do
     HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
     HTTP.post("http://127.0.0.1:6761/put?topic=#{@test_topic}", [body: "HTTP message"])
 
-    cons = Cons.get(cons_sup_pid)
     assert_receive(:handled, 2000)
     assert_receive(:handled, 2000)
   end
