@@ -375,7 +375,27 @@ defmodule NSQ.Connection do
     Logger.debug("(#{inspect self}) identifying...")
     identify_obj = encode({:identify, identify_props(conn_state)})
     :ok = :gen_tcp.send(socket, identify_obj)
-    {:ok, _resp} = :gen_tcp.recv(socket, 0)
+    {:response, json} = recv_nsq_response(socket, conn_state)
+    parsed = update_conn_info_from_identify_response(conn_state, json)
+    {:ok, parsed}
+  end
+
+  @spec update_conn_info_from_identify_response(map, binary) :: map
+  defp update_conn_info_from_identify_response(conn_state, json) do
+    {:ok, parsed} = Poison.decode(json)
+    ConnInfo.update conn_state, %{max_rdy: parsed["max_rdy_count"]}
+    parsed
+  end
+
+  @spec recv_nsq_response(pid, map) :: {:response, binary}
+  defp recv_nsq_response(socket, conn_state) do
+    {:ok, <<msg_size :: size(32)>>} = :gen_tcp.recv(
+      socket, 4, conn_state.config.read_timeout
+    )
+    {:ok, raw_msg_data} = :gen_tcp.recv(
+      socket, msg_size, conn_state.config.read_timeout
+    )
+    {:response, _response} = decode(raw_msg_data)
   end
 
   @spec subscribe(pid, conn_state) :: {:ok, binary}
@@ -385,7 +405,7 @@ defmodule NSQ.Connection do
 
     Logger.debug "(#{inspect self}) wait for subscription acknowledgment"
     expected = ok_msg
-    {:ok, ^expected} = :gen_tcp.recv(socket, 0)
+    {:ok, ^expected} = :gen_tcp.recv(socket, 0, conn_state.config.read_timeout)
   end
 
   @spec identify_props(conn_state) :: conn_state
