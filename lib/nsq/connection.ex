@@ -82,7 +82,8 @@ defmodule NSQ.Connection do
     {:stop, term, map}
   def connect(_info, %{nsqd: {host, port}} = state) do
     if should_attempt_connection?(state) do
-      case :gen_tcp.connect(to_char_list(host), port, @socket_opts, state.config.dial_timeout) do
+      socket_opts = @socket_opts ++ [send_timeout: state.config.write_timeout]
+      case :gen_tcp.connect(to_char_list(host), port, socket_opts, state.config.dial_timeout) do
         {:ok, socket} ->
           state = %{state | socket: socket}
           {:ok, state} = do_handshake(self, state)
