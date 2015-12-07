@@ -176,7 +176,10 @@ defmodule NSQ.Connection do
         state = %{state | cmd_resp_queue: cmd_resp_queue}
 
       {:error, data} ->
-        Logger.error "error #{inspect data}"
+        Logger.error "error: #{inspect data}"
+
+      {:error, reason, data} ->
+        Logger.error "error: #{reason}\n#{inspect data}"
 
       {:message, data} ->
         message = NSQ.Message.from_data(data)

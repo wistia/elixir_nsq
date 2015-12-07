@@ -20,7 +20,7 @@ See these resources for more info on building client libraries:
 - [x] Set connection's max_rdy from IDENTIFY result
 - [x] Respect configured read_timeout
 - [x] Respect configured write_timeout
-- [ ] Handle errors reported by NSQD
+- [x] Handle errors reported by NSQD
 - [ ] Graceful connection closing
 - [ ] TLS support
 - [ ] Auth support
