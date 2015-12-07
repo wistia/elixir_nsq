@@ -21,12 +21,13 @@ See these resources for more info on building client libraries:
 - [x] Respect configured read_timeout
 - [x] Respect configured write_timeout
 - [x] Handle errors reported by NSQD
+- [ ] Include Procfile for running nsqd/nsqlookupd for tests
 - [ ] Graceful connection closing
 - [ ] TLS support
 - [ ] Auth support
 - [ ] Delegates
-- [ ] Include Procfile for running nsqd/nsqlookupd for tests
 - [ ] Producer connection restart loop
+- [ ] Test Message TOUCH
 
 ## Publish Messages
 
@@ -133,3 +134,19 @@ If you're not using nsqlookupd, you can specify nsqds directly:
         ConnectionSupervisor
           Connection
           Connection
+
+## Running the Tests
+
+The included tests require two nsqds and two nsqlookupds. A Procfile for use
+with foreman is included to start these up. If you don't have
+[foreman](https://github.com/ddollar/foreman), you'll need to find a way to run
+those commands if you want to run the tests.
+
+```bash
+foreman start
+mix test
+```
+
+Note that some tests intentionally cause processes to exit, so you might see
+some error logging as part of the tests. As long as they're still passing, that
+is considered normal behavior.
