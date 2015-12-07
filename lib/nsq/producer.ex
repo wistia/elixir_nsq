@@ -35,7 +35,7 @@ defmodule NSQ.Producer do
   end
 
   def handle_call({:pub, topic, data}, _from, pro_state) do
-    do_pub(pro_state.topic, data, pro_state)
+    do_pub(topic, data, pro_state)
   end
 
   def handle_call({:mpub, data}, _from, pro_state) do
