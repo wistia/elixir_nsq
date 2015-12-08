@@ -13,6 +13,8 @@ defmodule NSQ.Connection do
   # Directives                                              #
   # ------------------------------------------------------- #
   require Logger
+  require HTTPotion
+  require HTTPotion.Response
   use Connection
   import NSQ.Protocol
   alias NSQ.ConnInfo, as: ConnInfo
