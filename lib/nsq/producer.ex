@@ -147,7 +147,7 @@ defmodule NSQ.Producer do
   @spec get_connections(pid, pro_state) :: [connection]
   def get_connections(pro, pro_state \\ nil) when is_pid(pro) do
     pro_state = pro_state || get_state(pro)
-    Supervisor.which_children(pro_state.conn_sup_pid)
+    get_connections(pro_state)
   end
 
   @spec random_connection_pid(pro_state) :: pid
