@@ -100,11 +100,13 @@ defmodule NSQ.Message do
   mode, where it stops receiving messages for a fixed duration.
   """
   def req(message, delay \\ -1, backoff \\ false) do
-    Logger.debug("(#{inspect message.connection}) requeue msg ID #{message.id}, delay #{delay}, backoff #{backoff}")
     if delay == -1 do
       delay = calculate_delay(
         message.attempts, message.config.max_requeue_delay
       )
+      Logger.debug("(#{inspect message.connection}) requeue msg ID #{message.id}, delay #{delay} (auto-calculated with attempts #{message.attempts}), backoff #{backoff}")
+    else
+      Logger.debug("(#{inspect message.connection}) requeue msg ID #{message.id}, delay #{delay}, backoff #{backoff}")
     end
     :gen_tcp.send(message.socket, encode({:req, message.id, delay}))
     GenEvent.notify(message.event_manager_pid, {:message_requeued, message})
