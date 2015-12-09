@@ -53,6 +53,7 @@ defmodule NSQ.Connection do
     config: %{},
     reader_pid: nil,
     msg_sup_pid: nil,
+    event_manager_pid: nil,
     messages_in_flight: 0,
     nsqd: nil,
     topic: nil,
@@ -167,9 +168,11 @@ defmodule NSQ.Connection do
   def handle_cast({:nsq_msg, msg}, %{socket: socket, cmd_resp_queue: cmd_resp_queue} = state) do
     case msg do
       {:response, "_heartbeat_"} ->
+        GenEvent.notify(state.event_manager_pid, :heartbeat)
         :gen_tcp.send(socket, encode(:noop))
 
       {:response, data} ->
+        GenEvent.notify(state.event_manager_pid, {:response, data})
         {item, cmd_resp_queue} = :queue.out(cmd_resp_queue)
         case item do
           {:value, {_cmd, {pid, ref}, :reply}} ->
@@ -179,9 +182,11 @@ defmodule NSQ.Connection do
         state = %{state | cmd_resp_queue: cmd_resp_queue}
 
       {:error, data} ->
+        GenEvent.notify(state.event_manager_pid, {:error, data})
         Logger.error "error: #{inspect data}"
 
       {:error, reason, data} ->
+        GenEvent.notify(state.event_manager_pid, {:error, reason, data})
         Logger.error "error: #{reason}\n#{inspect data}"
 
       {:message, data} ->
@@ -192,8 +197,10 @@ defmodule NSQ.Connection do
           consumer: state.parent,
           socket: socket,
           config: state.config,
-          msg_timeout: state.msg_timeout
+          msg_timeout: state.msg_timeout,
+          event_manager_pid: state.event_manager_pid
         }
+        GenEvent.notify(state.event_manager_pid, {:message, message})
         GenServer.cast(state.parent, {:maybe_update_rdy, state.nsqd})
         Task.Supervisor.start_child(
           state.msg_sup_pid, NSQ.Message, :process, [message]
@@ -218,14 +225,15 @@ defmodule NSQ.Connection do
   # ------------------------------------------------------- #
   @spec start_link(pid, host_with_port, NSQ.Config.t, String.t, String.t, pid, list) ::
     {:ok, pid}
-  def start_link(parent, nsqd, config, topic, channel, conn_info_pid, opts \\ []) do
+  def start_link(parent, nsqd, config, topic, channel, conn_info_pid, event_manager_pid, opts \\ []) do
     state = %{@initial_state |
       parent: parent,
       nsqd: nsqd,
       config: config,
       topic: topic,
       channel: channel,
-      conn_info_pid: conn_info_pid
+      conn_info_pid: conn_info_pid,
+      event_manager_pid: event_manager_pid
     }
     {:ok, _pid} = Connection.start_link(__MODULE__, state, opts)
   end

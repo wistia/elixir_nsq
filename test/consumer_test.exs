@@ -1,4 +1,13 @@
 defmodule NSQ.ConsumerTest do
+  defmodule EventForwarder do
+    use GenEvent
+
+    def handle_event(event, parent) do
+      send parent, event
+      {:ok, parent}
+    end
+  end
+
   use ExUnit.Case, async: true
   doctest NSQ.Consumer
   alias NSQ.Consumer, as: Cons
@@ -18,6 +27,26 @@ defmodule NSQ.ConsumerTest do
     HTTP.post("http://127.0.0.1:6771/topic/delete?topic=#{@test_topic}")
     HTTP.post("http://127.0.0.1:6781/topic/delete?topic=#{@test_topic}")
     :ok
+  end
+
+  test "notifies the event manager of relevant events" do
+    test_pid = self
+    {:ok, consumer} = NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
+      nsqds: [{"127.0.0.1", 6750}],
+      message_handler: fn(_body, _msg) ->
+        send(test_pid, :handled)
+        :ok
+      end
+    })
+
+    NSQ.Consumer.event_manager(consumer)
+      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self)
+
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
+    assert_receive(:handled, 2000)
+
+    assert_receive({:message, %NSQ.Message{}}, 2000)
+    assert_receive({:message_finished, %NSQ.Message{}}, 2000)
   end
 
   test "a connection is terminated, cleaned up, and restarted when the tcp connection closes" do

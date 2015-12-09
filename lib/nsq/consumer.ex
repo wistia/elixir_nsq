@@ -89,6 +89,7 @@ defmodule NSQ.Consumer do
     config: %NSQ.Config{},
     conn_sup_pid: nil,
     conn_info_pid: nil,
+    event_manager_pid: nil,
     max_in_flight: 2500,
     topic: nil,
     message_handler: nil,
@@ -151,6 +152,13 @@ defmodule NSQ.Consumer do
 
     {:ok, conn_info_pid} = Agent.start_link(fn -> %{} end)
     cons_state = %{cons_state | conn_info_pid: conn_info_pid}
+
+    if cons_state.config.event_manager do
+      manager = cons_state.config.event_manager
+    else
+      {:ok, manager} = GenEvent.start_link
+    end
+    cons_state = %{cons_state | event_manager_pid: manager}
 
     cons_state = %{cons_state | max_in_flight: cons_state.config.max_in_flight}
 
@@ -218,6 +226,15 @@ defmodule NSQ.Consumer do
   def handle_call({:max_in_flight, new_max_in_flight}, _from, state) do
     state = %{state | max_in_flight: new_max_in_flight}
     {:reply, :ok, state}
+  end
+
+  @doc """
+  Called from NSQ.Consume.event_manager.
+  """
+  @spec handle_call(:event_manager, any, cons_state) ::
+    {:reply, pid, cons_state}
+  def handle_call(:event_manager, _from, state) do
+    {:reply, state.event_manager_pid, state}
   end
 
   @doc """
@@ -778,6 +795,16 @@ defmodule NSQ.Consumer do
   def change_max_in_flight(sup_pid, new_max_in_flight) do
     cons = get(sup_pid)
     GenServer.call(cons, {:max_in_flight, new_max_in_flight})
+  end
+
+  @doc """
+  If the event manager is not defined in NSQ.Config, it will be generated. So
+  if you want to attach event handlers on the fly, you can use a syntax like
+  `NSQ.Consumer.event_manager(consumer) |> GenEvent.add_handler(MyHandler, [])`
+  """
+  def event_manager(sup_pid) do
+    cons = get(sup_pid)
+    GenServer.call(cons, :event_manager)
   end
 
   @doc """

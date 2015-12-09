@@ -106,7 +106,11 @@ defmodule NSQ.Config do
     # secret for nsqd authentication (requires nsqd 0.2.29+)
     auth_secret: nil,
 
-    message_handler: nil
+    # function or module to deal with messages
+    message_handler: nil,
+
+    # define a custom event manager to get callbacks as to what NSQ is doing
+    event_manager: nil
   }
 
   @valid_ranges %{

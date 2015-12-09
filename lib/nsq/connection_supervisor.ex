@@ -27,7 +27,8 @@ defmodule NSQ.ConnectionSupervisor do
       parent_state.config,
       parent_state.topic,
       parent_state.channel,
-      parent_state.conn_info_pid
+      parent_state.conn_info_pid,
+      parent_state.event_manager_pid
     ]
     conn_id = ConnInfo.conn_id(parent, nsqd)
 

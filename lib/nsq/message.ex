@@ -18,6 +18,7 @@ defmodule NSQ.Message do
     :socket,
     :config,
     :processing_pid,
+    :event_manager_pid,
     :msg_timeout
   ]
 
@@ -86,7 +87,9 @@ defmodule NSQ.Message do
   def fin(message) do
     Logger.debug("(#{inspect message.connection}) fin msg ID #{message.id}")
     :gen_tcp.send(message.socket, encode({:fin, message.id}))
+    GenEvent.notify(message.event_manager_pid, {:message_finished, message})
     GenServer.call(message.consumer, {:start_stop_continue_backoff, :resume})
+    GenEvent.notify(message.event_manager_pid, :resume)
   end
 
   @doc """
@@ -104,10 +107,13 @@ defmodule NSQ.Message do
       )
     end
     :gen_tcp.send(message.socket, encode({:req, message.id, delay}))
+    GenEvent.notify(message.event_manager_pid, {:message_requeued, message})
     if backoff do
       GenServer.call(message.consumer, {:start_stop_continue_backoff, :backoff})
+      GenEvent.notify(message.event_manager_pid, :backoff)
     else
-      GenServer.call(message.consumer, {:start_stop_continue_backoff, :resume})
+      GenServer.call(message.consumer, {:start_stop_continue_backoff, :continue})
+      GenEvent.notify(message.event_manager_pid, :continue)
     end
   end
 

@@ -54,6 +54,7 @@ defmodule NSQ.Producer do
     topic: nil,
     channel: nil,
     conn_sup_pid: nil,
+    event_manager_pid: nil,
     config: nil,
     conn_info_pid: nil
   }
@@ -88,6 +89,13 @@ defmodule NSQ.Producer do
 
     {:ok, conn_info_pid} = Agent.start_link(fn -> %{} end)
     pro_state = %{pro_state | conn_info_pid: conn_info_pid}
+
+    if pro_state.config.event_manager do
+      manager = pro_state.config.event_manager
+    else
+      {:ok, manager} = GenEvent.start_link
+    end
+    pro_state = %{pro_state | event_manager_pid: manager}
 
     {:ok, _pro_state} = connect_to_nsqds(pro_state.config.nsqds, self, pro_state)
   end
