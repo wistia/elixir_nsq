@@ -139,7 +139,7 @@ defmodule NSQ.Message do
 
   # TODO: Custom error logging/handling?
   defp log_failed_message(message) do
-    Logger.warning("msg #{message.id} attempted #{message.attempts} times, giving up")
+    Logger.warn("msg #{message.id} attempted #{message.attempts} times, giving up")
   end
 
   # Handler can be either an anonymous function or a module that implements the
