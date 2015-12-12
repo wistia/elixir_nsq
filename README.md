@@ -28,6 +28,7 @@ See these resources for more info on building client libraries:
 - [ ] Delegates
 - [ ] Producer connection restart loop
 - [ ] Test Message TOUCH
+- [ ] Remove Connection dependency
 
 ## Publish Messages
 
