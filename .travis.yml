@@ -9,6 +9,7 @@ otp_release:
 
 before_install:
   - sudo apt-get install golang
+  - mkdir $HOME/golang export GOPATH=$HOME/golang
   - go get github.com/nsqio/nsq/...
 
 before_script:
