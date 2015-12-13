@@ -8,15 +8,11 @@ otp_release:
   - 18.0
 
 before_install:
-  - sudo apt-get install golang
-  - mkdir -p $HOME/golang
-  - export GOPATH=$HOME/golang
-  - go get github.com/nsqio/nsq/...
+  - wget https://github.com/fclairamb/nsq-debian-package/releases/download/0.3.5/nsq_0.3.5_amd64.deb
+  - sudo dpkg -i nsq_0.3.5_amd64.deb
 
 before_script:
-  - export GOPATH=$HOME/golang
-  - ls $GOPATH
-  - export PATH=$GOPATH/nsq/bin:$PATH
+  - which nsqd
   - nsqd --tcp-address=127.0.0.1:6750 --http-address=127.0.0.1:6751 --worker-id=512 --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:6770 --lookupd-tcp-address=127.0.0.1:6780 &
   - nsqd --tcp-address=127.0.0.1:6760 --http-address=127.0.0.1:6761 --worker-id=513 --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:6770 --lookupd-tcp-address=127.0.0.1:6780 &
   - nsqlookupd --tcp-address=127.0.0.1:6770 --http-address=127.0.0.1:6771 --broadcast-address=127.0.0.1 &
