@@ -72,14 +72,15 @@ defmodule NSQ.ConsumerTest do
     Logger.warn "Closing socket as part of test..."
     :gen_tcp.close(conn_state.socket)
 
-    # Wait for the lookupd loop to run again, at which point it will remove the
-    # dead connection and spawn a new one.
-    :timer.sleep(500)
+    # Normally dead connections hang around until the next discovery loop run,
+    # but if we waited that long, we wouldn't be able to check if it was
+    # actually dead. So we clear dead connections manually here.
+    GenServer.call(cons, :delete_dead_connections)
     assert length(Cons.get_connections(cons)) == 0
 
     # Wait for the new connection to come up. It should be different from the
     # old one.
-    :timer.sleep(1000)
+    :timer.sleep(600)
     [conn2] = Cons.get_connections(cons)
     assert conn1 != conn2
 

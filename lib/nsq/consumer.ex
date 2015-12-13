@@ -189,6 +189,16 @@ defmodule NSQ.Consumer do
   end
 
   @doc """
+  Only used for specs.
+  """
+  @spec handle_call(:delete_dead_connections, {reference, pid}, cons_state) ::
+    {:reply, :ok, cons_state}
+  def handle_call(:delete_dead_connections, _from, cons_state) do
+    {:ok, cons_state} = delete_dead_connections(cons_state)
+    {:reply, :ok, cons_state}
+  end
+
+  @doc """
   Called from `NSQ.Message.fin/1`. Not for external use.
   """
   @spec handle_call({:start_stop_continue_backoff, atom}, {reference, pid}, cons_state) ::
