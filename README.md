@@ -1,5 +1,7 @@
 # elixir_nsq - UNDER CONSTRUCTION
 
+[![Build Status](https://travis-ci.org/wistia/elixir_nsq.svg?branch=master)](https://travis-ci.org/wistia/elixir_nsq)
+
 The goal of this project is to create a production-ready Elixir client library
 for NSQ. It is currently in a phase of rapid prototyping, and is _not ready_
 for production yet. When that time comes, the readme will reflect it.
