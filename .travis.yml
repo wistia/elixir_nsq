@@ -9,8 +9,9 @@ otp_release:
 
 before_install:
   - sudo apt-get install golang
-  - sudo mkdir $HOME/golang export GOPATH=$HOME/golang
-  - sudo go get github.com/nsqio/nsq/...
+  - mkdir -p $HOME/golang
+  - export GOPATH=$HOME/golang
+  - go get github.com/nsqio/nsq/...
 
 before_script:
   - nsqd --tcp-address=127.0.0.1:6750 --http-address=127.0.0.1:6751 --worker-id=512 --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:6770 --lookupd-tcp-address=127.0.0.1:6780 &
