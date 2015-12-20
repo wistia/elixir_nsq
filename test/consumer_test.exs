@@ -128,6 +128,7 @@ defmodule NSQ.ConsumerTest do
     # Normally dead connections hang around until the next discovery loop run,
     # but if we waited that long, we wouldn't be able to check if it was
     # actually dead. So we clear dead connections manually here.
+    :timer.sleep(100)
     GenServer.call(cons, :delete_dead_connections)
     assert length(Cons.get_connections(cons)) == 0
 
