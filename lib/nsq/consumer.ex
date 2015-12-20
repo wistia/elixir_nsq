@@ -248,6 +248,15 @@ defmodule NSQ.Consumer do
   end
 
   @doc """
+  Called to observe all connection stats. For debugging or reporting purposes.
+  """
+  @spec handle_call(:conn_info, any, cons_state) :: {:reply, map, cons_state}
+  def handle_call(:conn_info, _from, state) do
+    info = ConnInfo.all(state.conn_info_pid)
+    {:reply, info, state}
+  end
+
+  @doc """
   Called from `resume_from_backoff_later/3`. Not for external use.
   """
   @spec handle_cast(:resume, cons_state) :: {:noreply, cons_state}
@@ -845,6 +854,11 @@ defmodule NSQ.Consumer do
     {:ok, state}
   end
 
+  def conn_info(sup_pid) do
+    cons = get(sup_pid)
+    GenServer.call(cons, :conn_info)
+  end
+
   @doc """
   NSQ.Consumer.new actually returns the supervisor pid so that we can
   effectively recover from consumer crashes. This function takes the supervisor
@@ -965,8 +979,7 @@ defmodule NSQ.Consumer do
 
       Logger.debug(
         "(#{inspect conn}) rdy: #{rdy_count} (last message received \
-        #{sec_since_last_msg} seconds ago, \
-        #{inspect datetime_from_timestamp(last_msg_t)})"
+        #{sec_since_last_msg} seconds ago)"
       )
 
       is_idle = ms_since_last_msg > cons_state.config.low_rdy_idle_timeout

@@ -47,18 +47,21 @@ defmodule NSQ.Message do
     end
     message = %{message | processing_pid: pid}
 
-    wait_for_msg_done(message)
+    {:ok, ret_val} = wait_for_msg_done(message)
 
     # Even if we've killed the message processing, we're still "done"
     # processing it for now. That is, we should free up a spot on
     # messages_in_flight.
-    {:message_done, message}
+    result = {:message_done, message, ret_val}
+    send(message.connection, result)
+    result
   end
 
   def process_without_timeout(parent, message) do
-    if should_fail_message?(message) do
+    ret_val = if should_fail_message?(message) do
       log_failed_message(message)
       fin(message)
+      :fail
     else
       result = try do
         run_handler(message.config.message_handler, message)
@@ -70,13 +73,16 @@ defmodule NSQ.Message do
 
       case result do
         :ok -> fin(message)
+        :fail -> fin(message)
         :req -> req(message)
         {:req, delay} -> req(message, delay)
         {:req, delay, backoff} -> req(message, delay, backoff)
       end
+
+      result
     end
 
-    send parent, {:message_done, message}
+    send parent, {:message_done, message, ret_val}
   end
 
   @doc """
@@ -159,8 +165,9 @@ defmodule NSQ.Message do
   # processing.
   defp wait_for_msg_done(message) do
     receive do
-      {:message_done, _msg} ->
+      {:message_done, _msg, ret_val} ->
         unlink_and_exit(message.processing_pid)
+        {:ok, ret_val}
       {:message_touch, _msg} ->
         # If NSQ.Message.touch(msg) is called, we will send TOUCH msg_id to
         # NSQD, but we also need to reset our timeout on the client to avoid

@@ -49,6 +49,60 @@ defmodule NSQ.ConsumerTest do
     assert_receive({:message_finished, %NSQ.Message{}}, 2000)
   end
 
+  test "updating connection stats" do
+    test_pid = self
+    {:ok, consumer} = NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
+      lookupd_poll_interval: 500,
+      nsqds: ["127.0.0.1:6750"],
+      message_handler: fn(body, msg) ->
+        :timer.sleep(1000)
+        case body do
+          "ok" -> :ok
+          "req" -> :req
+          "req2000" -> {:req, 2000}
+          "backoff" -> {:req, 2000, true}
+          "fail" -> :fail
+        end
+      end
+    })
+
+    NSQ.Consumer.event_manager(consumer)
+      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self)
+
+    [info] = NSQ.Consumer.conn_info(consumer) |> Map.values
+    IO.puts "Initial timestamp is #{info.last_msg_timestamp}"
+    previous_timestamp = info.last_msg_timestamp
+    :timer.sleep(1000)
+
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "ok"])
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "req"])
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "req2000"])
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "fail"])
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "backoff"])
+
+    assert_receive({:message, _}, 2000)
+    assert_receive({:message, _}, 2000)
+    assert_receive({:message, _}, 2000)
+    assert_receive({:message, _}, 2000)
+    assert_receive({:message, _}, 2000)
+    [info] = NSQ.Consumer.conn_info(consumer) |> Map.values
+    assert info.messages_in_flight == 5
+
+    assert_receive({:message_finished, _}, 2000)
+    assert_receive({:message_requeued, _}, 2000)
+    assert_receive({:message_requeued, _}, 2000)
+    assert_receive({:message_finished, _}, 2000)
+    assert_receive({:message_requeued, _}, 2000)
+
+    :timer.sleep(50)
+    [info] = NSQ.Consumer.conn_info(consumer) |> Map.values
+    assert info.messages_in_flight == 0
+    assert info.requeued_count == 3
+    assert info.finished_count == 1
+    assert info.failed_count == 1
+    assert info.last_msg_timestamp > previous_timestamp
+  end
+
   test "a connection is terminated, cleaned up, and restarted when the tcp connection closes" do
     test_pid = self
     {:ok, cons_sup_pid} = NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{

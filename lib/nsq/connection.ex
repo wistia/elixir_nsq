@@ -213,11 +213,34 @@ defmodule NSQ.Connection do
   # When a task is done, it automatically messages the return value to the
   # calling process. we can use that opportunity to update the messages in
   # flight.
-  @spec handle_info({reference, {:message_done, NSQ.Message.t}}, conn_state) ::
+  @spec handle_info({reference, {:message_done, NSQ.Message.t, any}}, conn_state) ::
     {:noreply, conn_state}
-  def handle_info({_ref, {:message_done, _msg}}, state) do
-    state = state |> decrement_messages_in_flight
+  def handle_info({:message_done, msg, ret_val}, state) do
+    update_conn_stats(state, ret_val)
     {:noreply, state}
+  end
+
+  defp update_conn_stats(state, ret_val) do
+    ConnInfo.update state, fn(info) ->
+      info = %{info | messages_in_flight: info.messages_in_flight - 1}
+      case ret_val do
+        :ok ->
+          %{info | finished_count: info.finished_count + 1}
+        :fail ->
+          %{info | failed_count: info.failed_count + 1}
+        :req ->
+          %{info | requeued_count: info.requeued_count + 1}
+        {:req, _} ->
+          %{info | requeued_count: info.requeued_count + 1}
+        {:req, _, true} ->
+          %{info |
+            requeued_count: info.requeued_count + 1,
+            backoff_count: info.backoff_count + 1
+          }
+        {:req, _, _} ->
+          %{info | requeued_count: info.requeued_count + 1}
+      end
+    end
   end
 
   # ------------------------------------------------------- #
@@ -477,7 +500,8 @@ defmodule NSQ.Connection do
 
   @spec now :: integer
   defp now do
-    :calendar.datetime_to_gregorian_seconds(:calendar.universal_time)
+    {megasec, sec, microsec} = :os.timestamp
+    1_000_000 * megasec + sec + microsec / 1_000_000
   end
 
   @spec reset_reconnects(conn_state) :: conn_state
@@ -588,7 +612,11 @@ defmodule NSQ.Connection do
       last_rdy: 0,
       messages_in_flight: 0,
       last_msg_timestamp: now,
-      retry_rdy_pid: nil
+      retry_rdy_pid: nil,
+      finished_count: 0,
+      requeued_count: 0,
+      failed_count: 0,
+      backoff_count: 0,
     }
   end
 
