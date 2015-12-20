@@ -114,6 +114,12 @@ If you're not using nsqlookupd, you can specify nsqds directly:
 })
 ```
 
+### Start a Supervised Consumer Directly
+
+`NSQ.Consumer.new/3` will actually create and return the pid of an
+`NSQ.ConsumerSupervisor`. But if you need to spawn that supervisor from another
+supervisor, you can use `NSQ.ConsumerSupervisor.start_link/3`.
+
 ### Supervision Tree
 
 For your convenience, this is the overall process structure of `elixir_nsq`.
