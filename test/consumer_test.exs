@@ -70,7 +70,6 @@ defmodule NSQ.ConsumerTest do
       |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self)
 
     [info] = NSQ.Consumer.conn_info(consumer) |> Map.values
-    IO.puts "Initial timestamp is #{info.last_msg_timestamp}"
     previous_timestamp = info.last_msg_timestamp
     :timer.sleep(1000)
 
