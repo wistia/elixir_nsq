@@ -360,6 +360,9 @@ defmodule NSQ.Consumer do
   @spec connect_to_nsqds([host_with_port], pid, cons_state) ::
     {:ok, cons_state}
   def connect_to_nsqds(nsqds, cons, cons_state \\ nil) do
+    if length(nsqds) > 0 do
+      Logger.info "Connecting to nsqds #{inspect nsqds}"
+    end
     cons_state = Enum.reduce nsqds, cons_state, fn(nsqd, last_state) ->
       {:ok, new_state} = connect_to_nsqd(nsqd, cons, last_state)
       new_state
@@ -396,6 +399,10 @@ defmodule NSQ.Consumer do
   """
   @spec stop_connections([connection], pid, cons_state) :: {:ok, cons_state}
   def stop_connections(dead_conns, cons, cons_state) do
+    if length(dead_conns) > 0 do
+      Logger.info "Stopping connections #{inspect dead_conns}"
+    end
+
     cons_state = Enum.reduce dead_conns, cons_state, fn({nsqd, _pid}, last_state) ->
       {:ok, new_state} = stop_connection(cons, nsqd, last_state)
       new_state
