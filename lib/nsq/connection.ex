@@ -15,7 +15,6 @@ defmodule NSQ.Connection do
   require Logger
   require HTTPotion
   require HTTPotion.Response
-  use Connection
   import NSQ.Protocol
   alias NSQ.ConnInfo, as: ConnInfo
 
@@ -61,7 +60,7 @@ defmodule NSQ.Connection do
     backoff_counter: 0,
     backoff_duration: 0,
     max_rdy: 2500,
-    reconnect_attempts: 0,
+    connect_attempts: 0,
     stop_flag: false,
     conn_info_pid: nil,
     msg_timeout: nil
@@ -70,66 +69,22 @@ defmodule NSQ.Connection do
   # ------------------------------------------------------- #
   # Behaviour Implementation                                #
   # ------------------------------------------------------- #
-  @spec init(map) :: {:connect, nil, conn_state}
+  @spec init(map) :: {:ok, conn_state}
   def init(conn_state) do
     {:ok, msg_sup_pid} = Task.Supervisor.start_link(strategy: :one_for_one)
+    conn_state = %{conn_state | msg_sup_pid: msg_sup_pid}
     init_conn_info(conn_state)
-    {:connect, nil, %{conn_state | msg_sup_pid: msg_sup_pid}}
-  end
-
-  @doc """
-  This is code that runs _to connect_. It's called whenever a handler returns
-  `:connect` as its first argument. Refer to the Connection docs for more info.
-  """
-  @spec connect(any, %{nsqd: host_with_port}) ::
-    {:ok, conn_state} |
-    {:stop, term, map}
-  def connect(_info, %{nsqd: {host, port}} = state) do
-    if should_attempt_connection?(state) do
-      socket_opts = @socket_opts ++ [send_timeout: state.config.write_timeout]
-      case :gen_tcp.connect(to_char_list(host), port, socket_opts, state.config.dial_timeout) do
-        {:ok, socket} ->
-          state = %{state | socket: socket}
-          {:ok, state} = do_handshake(state)
-          {:ok, state} = start_receiving_messages(socket, state)
-          {:ok, reset_reconnects(state)}
-        {:error, reason} ->
-          if length(state.config.nsqlookupds) > 0 do
-            log_connect_failed_and_stop({reason, "discovery loop should respawn"}, state)
-          else
-            if state.config.max_reconnect_attempts > 0 do
-              log_connect_failed_and_reconnect(reason, state)
-            else
-              log_connect_failed_and_stop({reason, "reconnect turned off"}, state)
-            end
-          end
-      end
-    else
-      Logger.debug("(#{inspect self}) too many reconnect attempts, giving up")
-      {:stop, :too_many_reconnects, state}
+    connect_result = connect(conn_state)
+    case connect_result do
+      {:ok, state} -> {:ok, state}
+      {{:error, _reason}, state} -> {:ok, state}
     end
   end
 
-  @doc """
-  This is code that runs _on disconnect_, not code _to disconnect_. Refer to
-  the Connection docs for more info.
-  """
-  @spec disconnect(any, conn_state) ::
-    {:stop, :normal, conn_state} | {:connect, :reconnect, conn_state}
-  def disconnect(info, %{socket: socket} = state) do
-    :ok = :gen_tcp.close(socket)
-    case info do
-      {:close, from} ->
-        Connection.reply(from, :ok)
-        {:stop, :normal, state}
-      {:error, :closed} ->
-        Logger.error("connection closed")
-        {:connect, :reconnect, increment_reconnects(state)}
-      {:error, reason} ->
-        Logger.error("connection error: #{inspect reason}")
-        {:connect, :reconnect, increment_reconnects(state)}
-    end
+  def terminate(_conn_state) do
+    :ok
   end
+
 
   @spec handle_call({:cmd, tuple, atom}, {pid, reference}, conn_state) ::
     {:reply, {:ok, reference}, conn_state} |
@@ -210,12 +165,20 @@ defmodule NSQ.Connection do
     {:noreply, state}
   end
 
+  @spec handle_cast(:reconnect, conn_state) :: {:noreply, conn_state}
+  def handle_cast(:reconnect, conn_state) do
+    if conn_state.connect_attempts > 0 do
+      {_, conn_state} = connect(conn_state)
+    end
+    {:noreply, conn_state}
+  end
+
   # When a task is done, it automatically messages the return value to the
   # calling process. we can use that opportunity to update the messages in
   # flight.
   @spec handle_info({reference, {:message_done, NSQ.Message.t, any}}, conn_state) ::
     {:noreply, conn_state}
-  def handle_info({:message_done, msg, ret_val}, state) do
+  def handle_info({:message_done, _msg, ret_val}, state) do
     update_conn_stats(state, ret_val)
     {:noreply, state}
   end
@@ -258,7 +221,7 @@ defmodule NSQ.Connection do
       conn_info_pid: conn_info_pid,
       event_manager_pid: event_manager_pid
     }
-    {:ok, _pid} = Connection.start_link(__MODULE__, state, opts)
+    {:ok, _pid} = GenServer.start_link(__MODULE__, state, opts)
   end
 
   @spec get_state(pid) :: {:ok, conn_state}
@@ -424,6 +387,42 @@ defmodule NSQ.Connection do
   # ------------------------------------------------------- #
   # Private Functions                                       #
   # ------------------------------------------------------- #
+  @spec connect(%{nsqd: host_with_port}) :: {:ok, conn_state} | {:error, String.t}
+  defp connect(%{nsqd: {host, port}} = state) do
+    if should_connect?(state) do
+      socket_opts = @socket_opts ++ [send_timeout: state.config.write_timeout]
+      case :gen_tcp.connect(to_char_list(host), port, socket_opts, state.config.dial_timeout) do
+        {:ok, socket} ->
+          state = %{state | socket: socket}
+          {:ok, state} = do_handshake(state)
+          {:ok, state} = start_receiving_messages(socket, state)
+          {:ok, reset_connects(state)}
+        {:error, reason} ->
+          if length(state.config.nsqlookupds) > 0 do
+            Logger.warn "(#{inspect self}) connect failed; discovery loop should respawn"
+            {{:error, reason}, %{state | connect_attempts: state.connect_attempts + 1}}
+          else
+            if state.config.max_reconnect_attempts > 0 do
+              Logger.warn "(#{inspect self}) connect failed; #{reason}; discovery loop should respawn"
+              {{:error, reason}, %{state | connect_attempts: state.connect_attempts + 1}}
+            else
+              Logger.error "(#{inspect self}) connect failed; reconnect turned off; terminating connection"
+              Process.exit(self, :connect_failed)
+            end
+          end
+      end
+    else
+      Logger.error "#{inspect self}: Failed to connect; terminating connection"
+      Process.exit(self, :connect_failed)
+    end
+  end
+
+  @spec should_connect?(conn_state) :: boolean
+  defp should_connect?(state) do
+    state.connect_attempts == 0 ||
+      state.connect_attempts <= state.config.max_reconnect_attempts
+  end
+
   @spec send_magic_v2(pid) :: :ok
   defp send_magic_v2(socket) do
     Logger.debug("(#{inspect self}) sending magic v2...")
@@ -497,26 +496,14 @@ defmodule NSQ.Connection do
     }
   end
 
-  @spec reconnect_delay(conn_state) :: integer
-  defp reconnect_delay(conn_state) do
-    interval = conn_state.config.lookupd_poll_interval
-    jitter = round(interval * conn_state.config.lookupd_poll_jitter * :random.uniform)
-    interval + jitter
-  end
-
   @spec now :: integer
   defp now do
     {megasec, sec, microsec} = :os.timestamp
     1_000_000 * megasec + sec + microsec / 1_000_000
   end
 
-  @spec reset_reconnects(conn_state) :: conn_state
-  defp reset_reconnects(state), do: %{state | reconnect_attempts: 0}
-
-  @spec increment_reconnects(conn_state) :: conn_state
-  defp increment_reconnects(state) do
-    %{state | reconnect_attempts: state.reconnect_attempts + 1, socket: nil}
-  end
+  @spec reset_connects(conn_state) :: conn_state
+  defp reset_connects(state), do: %{state | connect_attempts: 0}
 
   @spec received_message(conn_state) :: conn_state
   defp received_message(state) do
@@ -530,39 +517,10 @@ defmodule NSQ.Connection do
     state
   end
 
-  @spec decrement_messages_in_flight(conn_state) :: conn_state
-  defp decrement_messages_in_flight(state) do
-    ConnInfo.update state, fn(info) ->
-      %{info | messages_in_flight: info.messages_in_flight - 1}
-    end
-    state
-  end
-
   @spec update_rdy_count(conn_state, integer) :: conn_state
   defp update_rdy_count(state, rdy_count) do
     ConnInfo.update(state, %{rdy_count: rdy_count, last_rdy: rdy_count})
     state
-  end
-
-  @spec should_attempt_connection?(conn_state) :: boolean
-  defp should_attempt_connection?(state) do
-    state.reconnect_attempts == 0 ||
-      state.reconnect_attempts < state.config.max_reconnect_attempts
-  end
-
-  @spec log_connect_failed_and_stop({term, String.t}, conn_state) ::
-    {:stop, term, conn_state}
-  defp log_connect_failed_and_stop({reason, note}, state) do
-    Logger.debug("(#{inspect self}) connect failed; #{reason}; #{note}")
-    {:stop, reason, state}
-  end
-
-  @spec log_connect_failed_and_reconnect(term, conn_state) ::
-    {:backoff, integer, conn_state}
-  defp log_connect_failed_and_reconnect(reason, state) do
-    delay = reconnect_delay(state)
-    Logger.debug("(#{inspect self}) connect failed; #{reason}; try again in #{delay / 1000}s")
-    {:backoff, delay, increment_reconnects(state)}
   end
 
   @spec send_data_and_queue_resp(conn_state, tuple, {reference, pid}, atom) ::

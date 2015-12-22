@@ -31,7 +31,7 @@ defmodule NSQ.ConsumerTest do
 
   test "msg_timeout" do
     test_pid = self
-    {:ok, consumer} = NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    {:ok, _consumer} = NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
       msg_timeout: 1000,
       message_handler: fn(body, _msg) ->
@@ -83,7 +83,7 @@ defmodule NSQ.ConsumerTest do
     assert_receive :handled, 2000
 
     :timer.sleep(1000)
-    [info1, info2] = NSQ.Consumer.conn_info(consumer) |> Map.values
+    [_info1, _info2] = NSQ.Consumer.conn_info(consumer) |> Map.values
   end
 
   test "closing the connection waits for outstanding messages and cleanly exits" do
@@ -266,10 +266,10 @@ defmodule NSQ.ConsumerTest do
     assert_receive(:handled, 2000)
   end
 
-  test "#new exits when given a bad address and not able to reconnect" do
+  test "#start_link lives when given a bad address and not able to reconnect" do
     test_pid = self
     Process.flag(:trap_exit, true)
-    NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    {:ok, consumer} = NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 7777}],
       max_reconnect_attempts: 0,
       message_handler: fn(body, msg) ->
@@ -279,16 +279,17 @@ defmodule NSQ.ConsumerTest do
         :ok
       end
     })
-    assert_receive({:EXIT, _pid, {:shutdown, {:failed_to_start_child, NSQ.Consumer, {:econnrefused, _}}}})
+    GenServer.call(NSQ.Consumer.get(consumer), :delete_dead_connections)
+    [] = NSQ.Consumer.conn_info(consumer) |> Map.values
   end
 
 
-  test "#new lives when given a bad address but able to reconnect" do
+  test "#start_link lives when given a bad address but able to reconnect" do
     test_pid = self
-    Process.flag(:trap_exit, true)
-    NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    {:ok, consumer} = NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 7777}],
-      max_reconnect_attempts: 1,
+      max_reconnect_attempts: 2,
+      lookupd_poll_interval: 500,
       message_handler: fn(body, msg) ->
         assert body == "HTTP message"
         assert msg.attempts == 1
@@ -296,7 +297,12 @@ defmodule NSQ.ConsumerTest do
         :ok
       end
     })
-    refute_receive({:EXIT, _pid, {:shutdown, _}}, 2000)
+    [conn] = NSQ.Consumer.get_connections(NSQ.Consumer.get(consumer))
+    conn_state = NSQ.Connection.get_state(conn)
+    assert conn_state.connect_attempts == 1
+    :timer.sleep(700)
+    conn_state = NSQ.Connection.get_state(conn)
+    assert conn_state.connect_attempts == 2
   end
 
 

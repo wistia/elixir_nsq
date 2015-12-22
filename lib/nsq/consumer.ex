@@ -185,6 +185,7 @@ defmodule NSQ.Consumer do
     {:reply, :ok, cons_state}
   def handle_call(:discover_nsqds, _from, cons_state) do
     {:ok, cons_state} = delete_dead_connections(cons_state)
+    {:ok, cons_state} = reconnect_failed_connections(cons_state)
     {:ok, cons_state} = discover_nsqds_and_connect(self, cons_state)
     {:reply, :ok, cons_state}
   end
@@ -379,21 +380,32 @@ defmodule NSQ.Consumer do
   """
   @spec connect_to_nsqd(host_with_port, pid, cons_state) :: {:ok, cons_state}
   def connect_to_nsqd(nsqd, cons, cons_state) do
-    {:ok, _pid} = NSQ.ConnectionSupervisor.start_child(
-      cons, nsqd, cons_state
-    )
+    Process.flag(:trap_exit, true)
+    try do
+      {:ok, _pid} = NSQ.ConnectionSupervisor.start_child(
+        cons, nsqd, cons_state
+      )
 
-    # We normally set RDY to 1, but if we're spawning more connections than
-    # max_in_flight, we don't want to break our contract. In that case, the
-    # `redistribute_rdy` loop will take care of getting this connection some
-    # messages later.
-    remaining_rdy = cons_state.max_in_flight - total_rdy_count(cons_state)
-    if remaining_rdy > 0 do
-      conn = conn_from_nsqd(cons, nsqd, cons_state)
-      {:ok, cons_state} = send_rdy(conn, 1, cons_state)
+      # We normally set RDY to 1, but if we're spawning more connections than
+      # max_in_flight, we don't want to break our contract. In that case, the
+      # `redistribute_rdy` loop will take care of getting this connection some
+      # messages later.
+      remaining_rdy = cons_state.max_in_flight - total_rdy_count(cons_state)
+      if remaining_rdy > 0 do
+        conn = conn_from_nsqd(cons, nsqd, cons_state)
+        {:ok, cons_state} = send_rdy(conn, 1, cons_state)
+      end
+
+      {:ok, cons_state}
+    catch
+      :error, _ ->
+        Logger.error "#{inspect cons}: Error connecting to #{inspect nsqd}"
+        conn_id = ConnInfo.conn_id(cons, nsqd)
+        ConnInfo.delete(cons_state, conn_id)
+        {:ok, cons_state}
+    after
+      Process.flag(:trap_exit, false)
     end
-
-    {:ok, cons_state}
   end
 
   @doc """
@@ -869,6 +881,13 @@ defmodule NSQ.Consumer do
     {:ok, state}
   end
 
+  def reconnect_failed_connections(state) do
+    Enum.map get_connections(state), fn({_, pid}) ->
+      if Process.alive?(pid), do: GenServer.cast(pid, :reconnect)
+    end
+    {:ok, state}
+  end
+
   def conn_info(sup_pid) do
     cons = get(sup_pid)
     GenServer.call(cons, :conn_info)
@@ -896,15 +915,6 @@ defmodule NSQ.Consumer do
   @spec now() :: integer
   defp now do
     :calendar.datetime_to_gregorian_seconds(:calendar.universal_time)
-  end
-
-  epoch = {{1970, 1, 1}, {0, 0, 0}}
-  @epoch :calendar.datetime_to_gregorian_seconds(epoch)
-  @spec datetime_from_timestamp(tuple) :: integer
-  defp datetime_from_timestamp(timestamp) do
-    timestamp
-    |> +(@epoch)
-    |> :calendar.gregorian_seconds_to_datetime
   end
 
   @spec count_connections(cons_state) :: integer
