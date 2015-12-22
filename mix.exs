@@ -14,7 +14,7 @@ defmodule ElixirNsq.Mixfile do
   #
   # Type "mix help compile.app" for more information
   def application do
-    [applications: [:logger, :httpotion, :poison, :connection]]
+    [applications: [:logger, :httpotion, :poison]]
   end
 
   # Dependencies can be Hex packages:
@@ -28,7 +28,6 @@ defmodule ElixirNsq.Mixfile do
   # Type "mix help deps" for more examples and options
   defp deps do
     [
-      {:connection, "~> 1.0.1"},
       {:poison, "~> 1.5.0"},
       {:ibrowse, github: "cmullaparthi/ibrowse", tag: "v4.1.2"},
       {:httpotion, "~> 2.1.0"},
