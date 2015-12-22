@@ -11,10 +11,11 @@ defmodule NSQ.Consumer do
   ## Simple Interface
 
   In standard practice, the only function a user should need to know about is
-  `NSQ.Consumer.new/3`. It takes a topic, a channel, and an NSQ.Config struct,
-  which has possible values defined and explained in nsq/config.ex.
+  `NSQ.ConsumerSupervisor.start_link/3`. It takes a topic, a channel, and an
+  NSQ.Config struct, which has possible values defined and explained in
+  nsq/config.ex.
 
-      {:ok, consumer} = NSQ.Consumer.new("my-topic", "my-channel", %NSQ.Config{
+      {:ok, consumer} = NSQ.ConsumerSupervisor.start_link("my-topic", "my-channel", %NSQ.Config{
         nsqlookupds: ["127.0.0.1:6751", "127.0.0.1:6761"],
         message_handler: fn(body, msg) ->
           # handle them message
@@ -280,16 +281,6 @@ defmodule NSQ.Consumer do
   # ------------------------------------------------------- #
   # API Definitions                                         #
   # ------------------------------------------------------- #
-  @doc """
-  This is the standard way to initialize a consumer. It actually initializes a
-  supervisor, but we have it in NSQ.Consumer so end-users don't need to think
-  about that.
-  """
-  @spec new(String.t, String.t, NSQ.Config.t) :: {:ok, pid}
-  def new(topic, channel, config) do
-    NSQ.ConsumerSupervisor.start_link(topic, channel, config)
-  end
-
   @doc """
   Returns all live connections for a consumer. This function, which takes
   a consumer's entire state as an argument, is for convenience. Not for
@@ -867,7 +858,7 @@ defmodule NSQ.Consumer do
   end
 
   @doc """
-  NSQ.Consumer.new actually returns the supervisor pid so that we can
+  NSQ.ConsumerSupervisor.start_link returns the supervisor pid so that we can
   effectively recover from consumer crashes. This function takes the supervisor
   pid and returns the consumer pid. We use this for public facing functions so
   that the end user can simply target the supervisor, e.g.

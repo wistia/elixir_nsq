@@ -35,7 +35,7 @@ See these resources for more info on building client libraries:
 ## Publish Messages
 
 ```elixir
-{:ok, producer} = NSQ.Producer.new("my-topic", %NSQ.Config{
+{:ok, producer} = NSQ.ProducerSupervisor.start_link("my-topic", %NSQ.Config{
   nsqds: ["127.0.0.1:4150", "127.0.0.1:4151"]
 })
 
@@ -60,7 +60,7 @@ handler throws an exception, it will automatically be requeued and delayed with
 a timeout based on attempts.
 
 ```elixir
-{:ok, consumer} = NSQ.Consumer.new("my-topic", "my-channel", %NSQ.Config{
+{:ok, consumer} = NSQ.ConsumerSupervisor.start_link("my-topic", "my-channel", %NSQ.Config{
   nsqlookupds: ["127.0.0.1:4160", "127.0.0.1:4161"],
   message_handler: fn(body, msg) ->
     IO.puts "id: #{msg.id}"
@@ -81,7 +81,7 @@ defmodule MyMsgHandler do
   end
 end
 
-{:ok, consumer} = NSQ.Consumer.new("my-topic", "my-channel", %NSQ.Config{
+{:ok, consumer} = NSQ.ConsumerSupervisor.start_link("my-topic", "my-channel", %NSQ.Config{
   nsqlookupds: ["127.0.0.1:4160", "127.0.0.1:4161"],
   message_handler: MyMsgHandler
 })
@@ -106,19 +106,13 @@ end
 If you're not using nsqlookupd, you can specify nsqds directly:
 
 ```elixir
-{:ok, consumer} = NSQ.Consumer.new("my-topic", "my-channel", %NSQ.Config{
+{:ok, consumer} = NSQ.ConsumerSupervisor.start_link("my-topic", "my-channel", %NSQ.Config{
   nsqds: ["127.0.0.1:4150", "127.0.0.1:4151"],
   message_handler: fn(body, msg) ->
     :ok
   end
 })
 ```
-
-### Start a Supervised Consumer Directly
-
-`NSQ.Consumer.new/3` will actually create and return the pid of an
-`NSQ.ConsumerSupervisor`. But if you need to spawn that supervisor from another
-supervisor, you can use `NSQ.ConsumerSupervisor.start_link/3`.
 
 ### Supervision Tree
 

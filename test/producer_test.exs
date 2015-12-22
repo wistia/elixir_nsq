@@ -16,7 +16,7 @@ defmodule NSQ.ProducerTest do
   end
 
   test "#new starts a new producer, discoverable via nsqlookupd" do
-    {:ok, producer} = NSQ.Producer.new(
+    {:ok, producer} = NSQ.ProducerSupervisor.start_link(
       @test_topic, %NSQ.Config{nsqds: @configured_nsqds}
     )
 
@@ -35,12 +35,12 @@ defmodule NSQ.ProducerTest do
   end
 
   test "messages added via pub are handled by a consumer" do
-    {:ok, producer} = NSQ.Producer.new(
+    {:ok, producer} = NSQ.ProducerSupervisor.start_link(
       @test_topic, %NSQ.Config{nsqds: @configured_nsqds}
     )
 
     test_pid = self
-    NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
+    NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: @configured_nsqds,
       message_handler: fn(body, msg) ->
         assert body == "test abc"
@@ -55,13 +55,13 @@ defmodule NSQ.ProducerTest do
   end
 
   test "messages added via mpub are handled by a consumer" do
-    {:ok, producer} = NSQ.Producer.new(
+    {:ok, producer} = NSQ.ProducerSupervisor.start_link(
       @test_topic, %NSQ.Config{nsqds: @configured_nsqds}
     )
 
     test_pid = self
     {:ok, bodies} = Agent.start_link(fn -> [] end)
-    NSQ.Consumer.new(@test_topic, @test_channel1, %NSQ.Config{
+    NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: @configured_nsqds,
       message_handler: fn(body, _msg) ->
         Agent.update bodies, fn(list) -> [body|list] end

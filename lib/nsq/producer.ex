@@ -132,11 +132,6 @@ defmodule NSQ.Producer do
   # ------------------------------------------------------- #
   # API Definitions                                         #
   # ------------------------------------------------------- #
-  @spec new(binary, NSQ.Config.t) :: {:ok, pid}
-  def new(topic, config) do
-    NSQ.ProducerSupervisor.start_link(topic, config)
-  end
-
   @spec start_link(binary, NSQ.Config.t) :: {:ok, pid}
   def start_link(topic, config) do
     {:ok, config} = NSQ.Config.validate(config || %NSQ.Config{})
