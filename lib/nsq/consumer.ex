@@ -242,7 +242,6 @@ defmodule NSQ.Consumer do
 
   def handle_call(:close, _, cons_state) do
     Logger.info "Closing consumer #{inspect self}"
-    msg_timeout = cons_state.config.msg_timeout
     connections = get_connections(cons_state)
     Task.async fn ->
       Enum.map connections, fn({_, conn_pid}) ->
