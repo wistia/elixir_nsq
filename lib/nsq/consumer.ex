@@ -239,6 +239,18 @@ defmodule NSQ.Consumer do
     {:reply, :ok, state}
   end
 
+  def handle_call(:close, _, cons_state) do
+    Logger.info "Closing consumer #{inspect self}"
+    msg_timeout = cons_state.config.msg_timeout
+    connections = get_connections(cons_state)
+    Task.async fn ->
+      Enum.map connections, fn({_, conn_pid}) ->
+        Task.async(NSQ.Connection, :close, [conn_pid])
+      end
+    end
+    {:reply, :ok, %{cons_state | stop_flag: true}}
+  end
+
   @doc """
   Called from NSQ.Consume.event_manager.
   """
@@ -495,6 +507,11 @@ defmodule NSQ.Consumer do
 
     GenServer.call(cons, :discover_nsqds)
     discovery_loop(cons)
+  end
+
+  def close(sup_pid) do
+    cons = get(sup_pid)
+    GenServer.call(cons, :close)
   end
 
   @doc """

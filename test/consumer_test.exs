@@ -29,6 +29,34 @@ defmodule NSQ.ConsumerTest do
     :ok
   end
 
+  test "closing the connection waits for outstanding messages and cleanly exits" do
+    test_pid = self
+    {:ok, consumer} = NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+      nsqds: [{"127.0.0.1", 6750}],
+      message_handler: fn(body, _msg) ->
+        case body do
+          "slow" ->
+            :timer.sleep(1000)
+          "medium" ->
+            :timer.sleep(500)
+          "fast" ->
+            send(test_pid, :handled)
+        end
+        :ok
+      end
+    })
+
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "fast"])
+    assert_receive(:handled, 2000)
+
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "slow"])
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "medium"])
+    NSQ.Consumer.close(consumer)
+    :timer.sleep(50)
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "fast"])
+    refute_receive(:handled, 2000)
+  end
+
   test "notifies the event manager of relevant events" do
     test_pid = self
     {:ok, consumer} = NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
@@ -50,11 +78,10 @@ defmodule NSQ.ConsumerTest do
   end
 
   test "updating connection stats" do
-    test_pid = self
     {:ok, consumer} = NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       lookupd_poll_interval: 500,
       nsqds: ["127.0.0.1:6750"],
-      message_handler: fn(body, msg) ->
+      message_handler: fn(body, _msg) ->
         :timer.sleep(1000)
         case body do
           "ok" -> :ok
