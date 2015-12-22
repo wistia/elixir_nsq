@@ -177,7 +177,9 @@ defmodule NSQ.Message do
       message.msg_timeout ->
         # If we've waited this long, we can assume NSQD will requeue the
         # message on its own.
+        Logger.warn "Msg #{message.id} timed out, quit processing it and expect nsqd to requeue"
         unlink_and_exit(message.processing_pid)
+        {:ok, :req}
     end
   end
 

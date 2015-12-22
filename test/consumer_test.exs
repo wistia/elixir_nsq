@@ -29,12 +29,35 @@ defmodule NSQ.ConsumerTest do
     :ok
   end
 
+  test "msg_timeout" do
+    test_pid = self
+    {:ok, consumer} = NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+      nsqds: [{"127.0.0.1", 6750}],
+      msg_timeout: 1000,
+      message_handler: fn(body, _msg) ->
+        if body == "too_slow" do
+          :timer.sleep(1500)
+          send(test_pid, :handled)
+        else
+          send(test_pid, :handled)
+        end
+        :ok
+      end
+    })
+
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "hello"])
+    assert_receive :handled, 2000
+
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "too_slow"])
+    refute_receive :handled, 1500
+  end
+
   test "we don't go over max_in_flight, and keep processing after saturation" do
     test_pid = self
     {:ok, consumer} = NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}, {"127.0.0.1", 6760}],
       max_in_flight: 4,
-      message_handler: fn(body, _msg) ->
+      message_handler: fn(_body, _msg) ->
         send(test_pid, :handled)
         :timer.sleep(300)
         :ok
@@ -51,8 +74,6 @@ defmodule NSQ.ConsumerTest do
     :timer.sleep(100)
     [info1, info2] = NSQ.Consumer.conn_info(consumer) |> Map.values
     assert info1.messages_in_flight + info2.messages_in_flight == 4
-    IO.inspect info1
-    IO.inspect info2
 
     assert_receive :handled, 2000
     assert_receive :handled, 2000
