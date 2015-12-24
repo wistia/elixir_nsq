@@ -115,6 +115,49 @@ If you're not using nsqlookupd, you can specify nsqds directly:
 })
 ```
 
+## Get notified
+
+NSQ.Consumer and NSQ.Producer provide the function `event_manager/1` so that
+you can receive events from the NSQ client. You can keep your own stats/logs
+and perform actions based on that info.
+
+```elixir
+defmodule EventForwarder do
+  use GenEvent
+
+  def handle_event(event, parent) do
+    send parent, event
+    {:ok, parent}
+  end
+end
+
+def setup_consumer do
+  {:ok, consumer} = NSQ.ConsumerSupervisor.start_link("my-topic", "my-channel", %NSQ.Config{
+    nsqds: ["127.0.0.1:4150", "127.0.0.1:4151"],
+    message_handler: fn(body, msg) ->
+      :ok
+    end
+  })
+
+  # subscribe to events from the event manager
+  NSQ.Consumer.event_manager(consumer)
+  |> GenEvent.add_handler(EventForwarder, self)
+end
+```
+
+Potential event formats are:
+
+- `{:message, NSQ.Message.t}`
+- `{:message_finished, NSQ.Message.t}`
+- `{:message_requeued, NSQ.Message.t}`
+- `:resume`
+- `:continue`
+- `:backoff`
+- `:heartbeat`
+- `{:response, binary}`
+- `{:error, binary}`
+- `{:error, String.t, binary}`
+
 ### Supervision Tree
 
 For your convenience, this is the overall process structure of `elixir_nsq`.
