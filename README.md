@@ -27,10 +27,11 @@ See these resources for more info on building client libraries:
 - [ ] Graceful connection closing
 - [ ] TLS support
 - [ ] Auth support
-- [ ] Delegates
+- [x] Delegates
 - [ ] Producer connection restart loop
-- [ ] Test Message TOUCH
-- [ ] Remove Connection dependency
+- [x] Test Message TOUCH
+- [x] Remove Connection dependency
+- [ ] Implement `NSQ.Consumer.starved?/1`
 
 ## Publish Messages
 
