@@ -2,10 +2,11 @@ language: elixir
 
 elixir:
   - 1.1.1
+  - 1.2
 
 otp_release:
   - 17.1
-  - 18.0
+  - 18.2.1
 
 before_install:
   - wget https://github.com/fclairamb/nsq-debian-package/releases/download/0.3.5/nsq_0.3.5_amd64.deb
