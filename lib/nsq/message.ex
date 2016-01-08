@@ -58,29 +58,34 @@ defmodule NSQ.Message do
   end
 
   def process_without_timeout(parent, message) do
-    ret_val = if should_fail_message?(message) do
-      log_failed_message(message)
-      fin(message)
-      :fail
-    else
-      result = try do
-        run_handler(message.config.message_handler, message)
-      rescue
-        e ->
-          Logger.error "Error running message handler: #{inspect e}"
-          {:req, -1, true}
-      end
+    ret_val =
+      if should_fail_message?(message) do
+        log_failed_message(message)
+        fin(message)
+        :fail
+      else
+        result =
+          try do
+            run_handler(message.config.message_handler, message)
+          rescue
+            e ->
+              Logger.error "Error running message handler: #{inspect e}"
+              {:req, -1, true}
+          end
 
-      case result do
-        :ok -> fin(message)
-        :fail -> fin(message)
-        :req -> req(message)
-        {:req, delay} -> req(message, delay)
-        {:req, delay, backoff} -> req(message, delay, backoff)
-      end
+        case result do
+          :ok -> fin(message)
+          :fail -> fin(message)
+          :req -> req(message)
+          {:req, delay} -> req(message, delay)
+          {:req, delay, backoff} -> req(message, delay, backoff)
+          _ ->
+            Logger.error "Unexpected handler result #{inspect result}, requeueing message #{message.id}"
+            req(message)
+        end
 
-      result
-    end
+        result
+      end
 
     send parent, {:message_done, message, ret_val}
   end
