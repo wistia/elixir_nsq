@@ -512,17 +512,19 @@ defmodule NSQ.ConsumerTest do
     IO.puts "Letting RDY redistribute 10 times..."
     {conn1_rdy, conn2_rdy} = Enum.reduce 1..10, {0, 0}, fn(i, {rdy1, rdy2}) ->
       :timer.sleep(1000)
-      IO.puts i
-      {
+      result = {
         rdy1 + ConnInfo.fetch(cons_state, conn1, :rdy_count),
         rdy2 + ConnInfo.fetch(cons_state, conn2, :rdy_count)
       }
+      IO.puts "#{i}: #{inspect result}"
+      result
     end
 
     IO.puts "Distribution: #{conn1_rdy} : #{conn2_rdy}"
+    rdy_distributed_count = conn1_rdy + conn2_rdy
     assert conn1_rdy > 0
     assert conn2_rdy > 0
-    assert conn1_rdy + conn2_rdy == 10
+    assert rdy_distributed_count >= 10 && rdy_distributed_count <= 12
     assert abs(conn1_rdy - conn2_rdy) < 6
   end
 end

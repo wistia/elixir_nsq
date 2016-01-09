@@ -71,7 +71,7 @@ defmodule NSQ.Connection do
   # ------------------------------------------------------- #
   @spec init(map) :: {:ok, conn_state}
   def init(conn_state) do
-    {:ok, msg_sup_pid} = Task.Supervisor.start_link(strategy: :one_for_one)
+    {:ok, msg_sup_pid} = NSQ.MessageSupervisor.start_link
     conn_state = %{conn_state | msg_sup_pid: msg_sup_pid}
     init_conn_info(conn_state)
     connect_result = connect(conn_state)
@@ -81,7 +81,7 @@ defmodule NSQ.Connection do
     end
   end
 
-  def terminate(_conn_state) do
+  def terminate(_reason, _state) do
     :ok
   end
 
@@ -157,9 +157,7 @@ defmodule NSQ.Connection do
         }
         GenEvent.notify(state.event_manager_pid, {:message, message})
         GenServer.cast(state.parent, {:maybe_update_rdy, state.nsqd})
-        Task.Supervisor.start_child(
-          state.msg_sup_pid, NSQ.Message, :process, [message]
-        )
+        NSQ.MessageSupervisor.start_child(state.msg_sup_pid, message)
     end
 
     {:noreply, state}

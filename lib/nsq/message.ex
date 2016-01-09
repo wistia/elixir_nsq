@@ -4,6 +4,7 @@ defmodule NSQ.Message do
   # ------------------------------------------------------- #
   require Logger
   import NSQ.Protocol
+  use GenServer
 
   # ------------------------------------------------------- #
   # Struct Definition                                       #
@@ -19,8 +20,23 @@ defmodule NSQ.Message do
     :config,
     :processing_pid,
     :event_manager_pid,
-    :msg_timeout
+    :msg_timeout,
   ]
+
+  def start_link(message, opts \\ []) do
+    {:ok, _pid} = GenServer.start_link(__MODULE__, message, opts)
+  end
+
+  def init(message) do
+    # Process the message asynchronously after init.
+    GenServer.cast(self, :process)
+    {:ok, message}
+  end
+
+  def handle_cast(:process, message) do
+    process(message)
+    {:noreply, message}
+  end
 
   # ------------------------------------------------------- #
   # API Definitions                                         #

@@ -919,7 +919,12 @@ defmodule NSQ.Consumer do
   @spec count_connections(cons_state) :: integer
   defp count_connections(cons_state) do
     %{active: active} = Supervisor.count_children(cons_state.conn_sup_pid)
-    active
+    if is_integer(active) do
+      active
+    else
+      Logger.warn "(#{inspect self}) non-integer #{inspect active} returned counting connections, returning 0 instead"
+      0
+    end
   end
 
   @spec conn_already_discovered?(pid, connection, [host_with_port]) :: boolean
