@@ -31,6 +31,7 @@ defmodule ElixirNsq.Mixfile do
       {:poison, "~> 1.5.0"},
       {:ibrowse, github: "cmullaparthi/ibrowse", tag: "v4.1.2"},
       {:httpotion, "~> 2.1.0"},
+      {:uuid, "~> 1.1.2"},
 
       # testing
       {:secure_random, "~> 0.2", only: :test},
