@@ -243,9 +243,9 @@ defmodule NSQ.Consumer do
   def handle_call(:close, _, cons_state) do
     Logger.info "Closing consumer #{inspect self}"
     connections = get_connections(cons_state)
-    Task.async fn ->
+    Task.start_link fn ->
       Enum.map connections, fn({_, conn_pid}) ->
-        Task.async(NSQ.Connection, :close, [conn_pid])
+        Task.start_link(NSQ.Connection, :close, [conn_pid])
       end
     end
     {:reply, :ok, %{cons_state | stop_flag: true}}
