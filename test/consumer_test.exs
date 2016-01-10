@@ -525,6 +525,6 @@ defmodule NSQ.ConsumerTest do
     assert conn1_rdy > 0
     assert conn2_rdy > 0
     assert rdy_distributed_count >= 10 && rdy_distributed_count <= 12
-    assert abs(conn1_rdy - conn2_rdy) < 6
+    assert abs(conn1_rdy - conn2_rdy) < 8
   end
 end
