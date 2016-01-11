@@ -1,4 +1,4 @@
-defmodule NSQ.Connection.Handshake do
+defmodule NSQ.Connection.Initializer do
   alias NSQ.Connection, as: C
   alias NSQ.Connection.MessageHandling
   alias NSQ.ConnInfo

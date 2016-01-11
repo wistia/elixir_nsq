@@ -10,7 +10,7 @@ defmodule NSQ.Connection do
   require HTTPotion
   require HTTPotion.Response
   import NSQ.Protocol
-  import NSQ.Connection.Handshake
+  alias NSQ.Connection.Initializer
   alias NSQ.Connection.MessageHandling
   alias NSQ.ConnInfo, as: ConnInfo
 
@@ -68,7 +68,7 @@ defmodule NSQ.Connection do
     {:ok, msg_sup_pid} = NSQ.MessageSupervisor.start_link
     conn_state = %{conn_state | msg_sup_pid: msg_sup_pid}
     init_conn_info(conn_state)
-    connect_result = connect(conn_state)
+    connect_result = Initializer.connect(conn_state)
     case connect_result do
       {:ok, state} -> {:ok, state}
       {{:error, _reason}, state} -> {:ok, state}
@@ -121,7 +121,7 @@ defmodule NSQ.Connection do
   @spec handle_cast(:reconnect, conn_state) :: {:noreply, conn_state}
   def handle_cast(:reconnect, conn_state) do
     if conn_state.connect_attempts > 0 do
-      {_, conn_state} = connect(conn_state)
+      {_, conn_state} = Initializer.connect(conn_state)
     end
     {:noreply, conn_state}
   end
