@@ -10,9 +10,11 @@ defmodule NSQ.Connection do
   require HTTPotion
   require HTTPotion.Response
   import NSQ.Protocol
+  alias NSQ.Connection.Command
   alias NSQ.Connection.Initializer
   alias NSQ.Connection.MessageHandling
-  alias NSQ.ConnInfo, as: ConnInfo
+  alias NSQ.ConnInfo
+
 
   # ------------------------------------------------------- #
   # Type Definitions                                        #
@@ -84,8 +86,8 @@ defmodule NSQ.Connection do
     {:reply, {:queued, :nosocket}, conn_state}
   def handle_call({:cmd, cmd, kind}, {_, ref} = from, state) do
     if state.socket do
-      state = send_data_and_queue_resp(state, cmd, from, kind)
-      state = update_state_from_cmd(cmd, state)
+      state = Command.send_data_and_queue_resp(state, cmd, from, kind)
+      state = Command.update_state_from_cmd(cmd, state)
       {:reply, {:ok, ref}, state}
     else
       # Not connected currently; add this call onto a queue to be run as soon
@@ -115,7 +117,7 @@ defmodule NSQ.Connection do
 
   @spec handle_cast(:flush_cmd_queue, conn_state) :: {:noreply, conn_state}
   def handle_cast(:flush_cmd_queue, state) do
-    {:noreply, flush_cmd_queue(state)}
+    {:noreply, Command.flush_cmd_queue(state)}
   end
 
   @spec handle_cast(:reconnect, conn_state) :: {:noreply, conn_state}
@@ -230,41 +232,6 @@ defmodule NSQ.Connection do
   defp now do
     {megasec, sec, microsec} = :os.timestamp
     1_000_000 * megasec + sec + microsec / 1_000_000
-  end
-
-  @spec send_data_and_queue_resp(conn_state, tuple, {reference, pid}, atom) ::
-    conn_state
-  defp send_data_and_queue_resp(state, cmd, from, kind) do
-    state.socket |> Socket.Stream.send!(encode(cmd))
-    if kind == :noresponse do
-      state
-    else
-      %{state |
-        cmd_resp_queue: :queue.in({cmd, from, kind}, state.cmd_resp_queue)
-      }
-    end
-  end
-
-  @spec flush_cmd_queue(conn_state) :: conn_state
-  defp flush_cmd_queue(state) do
-    {item, new_queue} = :queue.out(state.cmd_queue)
-    case item do
-      {:value, {cmd, from, kind}} ->
-        state = send_data_and_queue_resp(state, cmd, from, kind)
-        flush_cmd_queue(%{state | cmd_queue: new_queue})
-      :empty ->
-        %{state | cmd_queue: new_queue}
-    end
-  end
-
-  @spec update_state_from_cmd(tuple, conn_state) :: conn_state
-  defp update_state_from_cmd(cmd, state) do
-    case cmd do
-      {:rdy, count} ->
-        ConnInfo.update(state, %{rdy_count: count, last_rdy: count})
-        state
-      _any -> state
-    end
   end
 
   @spec init_conn_info(conn_state) :: any
