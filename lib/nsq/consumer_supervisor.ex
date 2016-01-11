@@ -6,7 +6,7 @@ defmodule NSQ.ConsumerSupervisor do
   end
 
   def init({topic, channel, config}) do
-    consumer_name = String.to_atom("nsq_consumer_#{topic}_#{channel}")
+    consumer_name = String.to_atom("nsq_consumer_#{UUID.uuid4(:hex)}")
     discovery_loop_id = String.to_atom("#{consumer_name}_discovery_loop")
     rdy_loop_id = String.to_atom("#{consumer_name}_rdy_loop")
 
