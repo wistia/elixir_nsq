@@ -75,7 +75,7 @@ defmodule NSQ.Config do
 	  # tls_insecure_skip_verify - Bool indicates whether this client should verify server certificates
 	  # tls_cert - String path to file containing public key for certificate
 	  # tls_key - String path to file containing private key for certificate
-	  # tls_min_version - String indicating the minimum version of tls acceptable ('ssl3.0', 'tls1.0', 'tls1.1', 'tls1.2')
+	  # tls_min_version - String indicating the minimum version of tls acceptable :sslv3, :tlsv1, :"tlsv1.1", :"tlsv1.2"
     tls_v1: false,
     tls_insecure_skip_verify: false,
     tls_cert: nil,

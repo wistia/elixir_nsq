@@ -537,6 +537,7 @@ defmodule NSQ.ConsumerTest do
       tls_insecure_skip_verify: true,
       tls_cert: "#{__DIR__}/ssl_keys/elixir_nsq.crt",
       tls_key: "#{__DIR__}/ssl_keys/elixir_nsq.key",
+      tls_min_version: :"tlsv1.2",
       max_reconnect_attempts: 0,
       message_handler: fn(body, msg) ->
         assert body == "HTTP message"
@@ -545,8 +546,6 @@ defmodule NSQ.ConsumerTest do
         :ok
       end
     })
-
-    :timer.sleep 1000
 
     HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
     assert_receive(:handled, 2000)

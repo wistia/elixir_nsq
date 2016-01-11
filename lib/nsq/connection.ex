@@ -1,12 +1,6 @@
 defmodule NSQ.Connection do
   @moduledoc """
   Sets up a TCP connection to NSQD. Both consumers and producers use this.
-
-  This implements the Connection behaviour, which lets us reconnect or backoff
-  under certain conditions. For more info, check out the module:
-  https://github.com/fishcakez/connection. The module docs are especially
-  helpful:
-  https://github.com/fishcakez/connection/blob/master/lib/connection.ex.
   """
 
   # ------------------------------------------------------- #
@@ -390,6 +384,7 @@ defmodule NSQ.Connection do
         |> Keyword.put(:timeout, state.config.dial_timeout)
         |> Keyword.put(:cert, path: state.config.tls_cert)
         |> Keyword.put(:key, path: state.config.tls_key)
+        |> Keyword.put(:versions, path: ssl_versions(state.config.tls_min_version))
         |> Keyword.put(:verify, false)
 
       case Socket.TCP.connect(host, port, socket_opts) do
@@ -468,6 +463,22 @@ defmodule NSQ.Connection do
     end
 
     {:ok, conn_state}
+  end
+
+  @ssl_versions [:sslv3, :tlsv1, :"tlsv1.1", :"tlsv1.2"] |> Enum.with_index
+  @spec ssl_versions(NSQ.Config.t) :: [atom]
+  def ssl_versions(tls_min_version) do
+    if tls_min_version do
+      min_index = @ssl_versions[tls_min_version]
+      @ssl_versions
+      |> Enum.drop_while(fn({_, index}) -> index < min_index end)
+      |> Enum.map(fn({version, _}) -> version end)
+      |> Enum.reverse
+    else
+      @ssl_versions
+      |> Enum.map(fn({version, _}) -> version end)
+      |> Enum.reverse
+    end
   end
 
   @spec recv_nsq_response(pid, map) :: {:response, binary}
