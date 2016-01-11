@@ -484,7 +484,7 @@ defmodule NSQ.Connection do
     expected = ok_msg
     {:ok, ^expected} =
       socket |>
-      Socket.Stream.recv(0, timeout: conn_state.config.read_timeout)
+      Socket.Stream.recv(byte_size(expected), timeout: conn_state.config.read_timeout)
   end
 
   @spec identify_props(conn_state) :: conn_state
