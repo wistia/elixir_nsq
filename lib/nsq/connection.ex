@@ -10,6 +10,8 @@ defmodule NSQ.Connection do
   require HTTPotion
   require HTTPotion.Response
   import NSQ.Protocol
+  import NSQ.Connection.Handshake
+  alias NSQ.Connection.MessageHandling
   alias NSQ.ConnInfo, as: ConnInfo
 
   # ------------------------------------------------------- #
@@ -31,12 +33,11 @@ defmodule NSQ.Connection do
   set for a connection's state map.
   """
   @type conn_state :: %{parent: pid, socket: pid, config: NSQ.Config.t, nsqd: host_with_port}
+  @type state :: %{parent: pid, socket: pid, config: NSQ.Config.t, nsqd: host_with_port}
 
   # ------------------------------------------------------- #
   # Module Attributes                                       #
   # ------------------------------------------------------- #
-  @project ElixirNsq.Mixfile.project
-  @user_agent "#{@project[:app]}/#{@project[:version]}"
   @socket_opts [as: :binary, active: false, deliver: :term, packet: :raw]
   @initial_state %{
     parent: nil,
@@ -79,7 +80,6 @@ defmodule NSQ.Connection do
     :ok
   end
 
-
   @spec handle_call({:cmd, tuple, atom}, {pid, reference}, conn_state) ::
     {:reply, {:ok, reference}, conn_state} |
     {:reply, {:queued, :nosocket}, conn_state}
@@ -108,53 +108,15 @@ defmodule NSQ.Connection do
     {:reply, state, state}
   end
 
+  @spec handle_cast({:nsq_msg, binary}, T.conn_state) :: {:noreply, T.conn_state}
+  def handle_cast({:nsq_msg, msg}, state) do
+    {:ok, state} = MessageHandling.handle_nsq_message(msg, state)
+    {:noreply, state}
+  end
+
   @spec handle_cast(:flush_cmd_queue, conn_state) :: {:noreply, conn_state}
   def handle_cast(:flush_cmd_queue, state) do
     {:noreply, flush_cmd_queue(state)}
-  end
-
-  @spec handle_cast({:nsq_msg, binary}, conn_state) :: {:noreply, conn_state}
-  def handle_cast({:nsq_msg, msg}, %{socket: socket, cmd_resp_queue: cmd_resp_queue} = state) do
-    case msg do
-      {:response, "_heartbeat_"} ->
-        GenEvent.notify(state.event_manager_pid, :heartbeat)
-        socket |> Socket.Stream.send!(encode(:noop))
-
-      {:response, data} ->
-        GenEvent.notify(state.event_manager_pid, {:response, data})
-        {item, cmd_resp_queue} = :queue.out(cmd_resp_queue)
-        case item do
-          {:value, {_cmd, {pid, ref}, :reply}} ->
-            send(pid, {ref, data})
-          :empty -> :ok
-        end
-        state = %{state | cmd_resp_queue: cmd_resp_queue}
-
-      {:error, data} ->
-        GenEvent.notify(state.event_manager_pid, {:error, data})
-        Logger.error "error: #{inspect data}"
-
-      {:error, reason, data} ->
-        GenEvent.notify(state.event_manager_pid, {:error, reason, data})
-        Logger.error "error: #{reason}\n#{inspect data}"
-
-      {:message, data} ->
-        message = NSQ.Message.from_data(data)
-        state = received_message(state)
-        message = %NSQ.Message{message |
-          connection: self,
-          consumer: state.parent,
-          socket: socket,
-          config: state.config,
-          msg_timeout: state.msg_timeout,
-          event_manager_pid: state.event_manager_pid
-        }
-        GenEvent.notify(state.event_manager_pid, {:message, message})
-        GenServer.cast(state.parent, {:maybe_update_rdy, state.nsqd})
-        NSQ.MessageSupervisor.start_child(state.msg_sup_pid, message)
-    end
-
-    {:noreply, state}
   end
 
   @spec handle_cast(:reconnect, conn_state) :: {:noreply, conn_state}
@@ -168,34 +130,11 @@ defmodule NSQ.Connection do
   # When a task is done, it automatically messages the return value to the
   # calling process. we can use that opportunity to update the messages in
   # flight.
-  @spec handle_info({reference, {:message_done, NSQ.Message.t, any}}, conn_state) ::
-    {:noreply, conn_state}
+  @spec handle_info({reference, {:message_done, NSQ.Message.t, any}}, T.conn_state) ::
+    {:noreply, T.conn_state}
   def handle_info({:message_done, _msg, ret_val}, state) do
-    update_conn_stats(state, ret_val)
+    state |> MessageHandling.update_conn_stats_on_message_done(ret_val)
     {:noreply, state}
-  end
-
-  defp update_conn_stats(state, ret_val) do
-    ConnInfo.update state, fn(info) ->
-      info = %{info | messages_in_flight: info.messages_in_flight - 1}
-      case ret_val do
-        :ok ->
-          %{info | finished_count: info.finished_count + 1}
-        :fail ->
-          %{info | failed_count: info.failed_count + 1}
-        :req ->
-          %{info | requeued_count: info.requeued_count + 1}
-        {:req, _} ->
-          %{info | requeued_count: info.requeued_count + 1}
-        {:req, _, true} ->
-          %{info |
-            requeued_count: info.requeued_count + 1,
-            backoff_count: info.backoff_count + 1
-          }
-        {:req, _, _} ->
-          %{info | requeued_count: info.requeued_count + 1}
-      end
-    end
   end
 
   # ------------------------------------------------------- #
@@ -300,47 +239,6 @@ defmodule NSQ.Connection do
   end
 
   @doc """
-  This is the recv loop that we kick off in a separate process immediately
-  after the handshake. We send each incoming NSQ message as an erlang message
-  back to the connection for handling.
-  """
-  def recv_nsq_messages(sock, conn, timeout) do
-    case sock |> Socket.Stream.recv(4, timeout: timeout) do
-      {:error, :timeout} ->
-        # If publishing is quiet, we won't receive any messages in the timeout.
-        # This is fine. Let's just try again!
-        recv_nsq_messages(sock, conn, timeout)
-      {:ok, <<msg_size :: size(32)>>} ->
-        # Got a message! Decode it and let the connection know. We just
-        # received data on the socket to get the size of this message, so if we
-        # timeout in here, that's probably indicative of a problem.
-
-        {:ok, raw_msg_data} =
-          sock |> Socket.Stream.recv(msg_size, timeout: timeout)
-        decoded = decode(raw_msg_data)
-        GenServer.cast(conn, {:nsq_msg, decoded})
-        recv_nsq_messages(sock, conn, timeout)
-    end
-  end
-
-  @doc """
-  Immediately after connecting to the NSQ socket, both consumers and producers
-  follow this protocol.
-  """
-  @spec do_handshake(conn_state) :: {:ok, conn_state}
-  def do_handshake(conn_state) do
-    conn_state |> send_magic_v2
-    {:ok, conn_state} = identify(conn_state)
-
-    # Producers don't have a channel, so they won't do this.
-    if conn_state.channel do
-      subscribe(conn_state)
-    end
-
-    {:ok, conn_state}
-  end
-
-  @doc """
   Calls the command and waits for a response. If a command shouldn't have a
   response, use cmd_noreply.
   """
@@ -419,102 +317,6 @@ defmodule NSQ.Connection do
       state.connect_attempts <= state.config.max_reconnect_attempts
   end
 
-  @spec send_magic_v2(conn_state) :: :ok
-  defp send_magic_v2(state) do
-    Logger.debug("(#{inspect self}) sending magic v2...")
-    state.socket |> Socket.Stream.send!(encode(:magic_v2))
-  end
-
-  @spec identify(conn_state) :: {:ok, binary}
-  defp identify(conn_state) do
-    Logger.debug("(#{inspect self}) identifying...")
-    identify_obj = encode({:identify, identify_props(conn_state)})
-    conn_state.socket |> Socket.Stream.send!(identify_obj)
-    {:response, json} = recv_nsq_response(conn_state)
-    {:ok, _conn_state} = update_from_identify_response(conn_state, json)
-  end
-
-  @spec update_from_identify_response(map, binary) :: map
-  defp update_from_identify_response(conn_state, json) do
-    {:ok, parsed} = Poison.decode(json)
-
-    # respect negotiated max_rdy_count
-    if parsed["max_rdy_count"] do
-      ConnInfo.update conn_state, %{max_rdy: parsed["max_rdy_count"]}
-    end
-
-    # respect negotiated msg_timeout
-    if parsed["msg_timeout"] do
-      conn_state = %{conn_state | msg_timeout: parsed["msg_timeout"]}
-    else
-      conn_state = %{conn_state | msg_timeout: conn_state.config.msg_timeout}
-    end
-
-    if parsed["tls_v1"] == true do
-      socket = Socket.SSL.connect!(conn_state.socket)
-      conn_state = %{conn_state | socket: socket}
-      socket |> wait_for_ok(conn_state.config.read_timeout)
-    end
-
-    {:ok, conn_state}
-  end
-
-  @ssl_versions [:sslv3, :tlsv1, :"tlsv1.1", :"tlsv1.2"] |> Enum.with_index
-  @spec ssl_versions(NSQ.Config.t) :: [atom]
-  def ssl_versions(tls_min_version) do
-    if tls_min_version do
-      min_index = @ssl_versions[tls_min_version]
-      @ssl_versions
-      |> Enum.drop_while(fn({_, index}) -> index < min_index end)
-      |> Enum.map(fn({version, _}) -> version end)
-      |> Enum.reverse
-    else
-      @ssl_versions
-      |> Enum.map(fn({version, _}) -> version end)
-      |> Enum.reverse
-    end
-  end
-
-  @spec recv_nsq_response(conn_state) :: {:response, binary}
-  defp recv_nsq_response(conn_state) do
-    {:ok, <<msg_size :: size(32)>>} =
-      conn_state.socket |>
-      Socket.Stream.recv(4, timeout: conn_state.config.read_timeout)
-
-    {:ok, raw_msg_data} =
-      conn_state.socket |>
-      Socket.Stream.recv(msg_size, timeout: conn_state.config.read_timeout)
-
-    {:response, _response} = decode(raw_msg_data)
-  end
-
-  @spec subscribe(conn_state) :: {:ok, binary}
-  defp subscribe(%{socket: socket, topic: topic, channel: channel} = conn_state) do
-    Logger.debug "(#{inspect self}) subscribe to #{topic} #{channel}"
-    socket |> Socket.Stream.send!(encode({:sub, topic, channel}))
-
-    Logger.debug "(#{inspect self}) wait for subscription acknowledgment"
-    socket |> wait_for_ok(conn_state.config.read_timeout)
-  end
-
-  @spec identify_props(conn_state) :: conn_state
-  defp identify_props(%{nsqd: {host, port}, config: config} = conn_state) do
-    %{
-      client_id: "#{host}:#{port} (#{inspect conn_state.parent})",
-      hostname: to_string(:net_adm.localhost),
-      feature_negotiation: true,
-      heartbeat_interval: config.heartbeat_interval,
-      output_buffer: config.output_buffer_size,
-      output_buffer_timeout: config.output_buffer_timeout,
-      tls_v1: true,
-      snappy: false,
-      deflate: false,
-      sample_rate: 0,
-      user_agent: config.user_agent || @user_agent,
-      msg_timeout: config.msg_timeout
-    }
-  end
-
   @spec now :: integer
   defp now do
     {megasec, sec, microsec} = :os.timestamp
@@ -523,18 +325,6 @@ defmodule NSQ.Connection do
 
   @spec reset_connects(conn_state) :: conn_state
   defp reset_connects(state), do: %{state | connect_attempts: 0}
-
-  @spec received_message(conn_state) :: conn_state
-  defp received_message(state) do
-    ConnInfo.update state, fn(info) ->
-      %{info |
-        rdy_count: info.rdy_count - 1,
-        messages_in_flight: info.messages_in_flight + 1,
-        last_msg_timestamp: now
-      }
-    end
-    state
-  end
 
   @spec update_rdy_count(conn_state, integer) :: conn_state
   defp update_rdy_count(state, rdy_count) do
@@ -570,7 +360,7 @@ defmodule NSQ.Connection do
   @spec start_receiving_messages(conn_state) :: {:ok, conn_state}
   defp start_receiving_messages(%{socket: socket} = state) do
     reader_pid = spawn_link(
-      __MODULE__,
+      MessageHandling,
       :recv_nsq_messages,
       [socket, self, state.config.read_timeout]
     )
@@ -623,11 +413,5 @@ defmodule NSQ.Connection do
     catch
       :timeout, _ -> :timeout
     end
-  end
-
-  defp wait_for_ok(socket, timeout) do
-    expected = ok_msg
-    {:ok, ^expected} =
-      socket |> Socket.Stream.recv(byte_size(expected), timeout: timeout)
   end
 end
