@@ -151,4 +151,17 @@ defmodule NSQ.Connection.MessageHandling do
     {megasec, sec, microsec} = :os.timestamp
     1_000_000 * megasec + sec + microsec / 1_000_000
   end
+
+
+  @spec start_receiving_messages(conn_state) :: {:ok, conn_state}
+  defp start_receiving_messages(%{socket: socket} = state) do
+    reader_pid = spawn_link(
+      __MODULE__,
+      :recv_nsq_messages,
+      [socket, self, state.config.read_timeout]
+    )
+    state = %{state | reader_pid: reader_pid}
+    GenServer.cast(self, :flush_cmd_queue)
+    {:ok, state}
+  end
 end

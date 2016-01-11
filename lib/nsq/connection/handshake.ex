@@ -1,13 +1,54 @@
 defmodule NSQ.Connection.Handshake do
   alias NSQ.Connection, as: C
+  alias NSQ.Connection.MessageHandling
   alias NSQ.ConnInfo
   import NSQ.Protocol
   require Logger
 
+  @socket_opts [as: :binary, active: false, deliver: :term, packet: :raw]
 
   @project ElixirNsq.Mixfile.project
   @user_agent "#{@project[:app]}/#{@project[:version]}"
   @ssl_versions [:sslv3, :tlsv1, :"tlsv1.1", :"tlsv1.2"] |> Enum.with_index
+
+
+  @spec connect(%{nsqd: C.host_with_port}) :: {:ok, C.state} | {:error, String.t}
+  def connect(%{nsqd: {host, port}} = state) do
+    if should_connect?(state) do
+      socket_opts =
+        @socket_opts
+        |> Keyword.put(:send_timeout, state.config.write_timeout)
+        |> Keyword.put(:timeout, state.config.dial_timeout)
+        |> Keyword.put(:cert, path: state.config.tls_cert)
+        |> Keyword.put(:key, path: state.config.tls_key)
+        |> Keyword.put(:versions, path: ssl_versions(state.config.tls_min_version))
+        |> Keyword.put(:verify, false)
+
+      case Socket.TCP.connect(host, port, socket_opts) do
+        {:ok, socket} ->
+          state = %{state | socket: socket}
+          {:ok, state} = do_handshake(state)
+          {:ok, state} = start_receiving_messages(state)
+          {:ok, reset_connects(state)}
+        {:error, reason} ->
+          if length(state.config.nsqlookupds) > 0 do
+            Logger.warn "(#{inspect self}) connect failed; #{reason}; discovery loop should respawn"
+            {{:error, reason}, %{state | connect_attempts: state.connect_attempts + 1}}
+          else
+            if state.config.max_reconnect_attempts > 0 do
+              Logger.warn "(#{inspect self}) connect failed; #{reason}; discovery loop should respawn"
+              {{:error, reason}, %{state | connect_attempts: state.connect_attempts + 1}}
+            else
+              Logger.error "(#{inspect self}) connect failed; #{reason}; reconnect turned off; terminating connection"
+              Process.exit(self, :connect_failed)
+            end
+          end
+      end
+    else
+      Logger.error "#{inspect self}: Failed to connect; terminating connection"
+      Process.exit(self, :connect_failed)
+    end
+  end
 
 
   @doc """
@@ -134,5 +175,29 @@ defmodule NSQ.Connection.Handshake do
       |> Enum.map(fn({version, _}) -> version end)
       |> Enum.reverse
     end
+  end
+
+
+  @spec should_connect?(C.state) :: boolean
+  defp should_connect?(state) do
+    state.connect_attempts == 0 ||
+      state.connect_attempts <= state.config.max_reconnect_attempts
+  end
+
+
+  @spec reset_connects(C.state) :: C.state
+  defp reset_connects(state), do: %{state | connect_attempts: 0}
+
+
+  @spec start_receiving_messages(C.state) :: {:ok, C.state}
+  defp start_receiving_messages(%{socket: socket} = state) do
+    reader_pid = spawn_link(
+      MessageHandling,
+      :recv_nsq_messages,
+      [socket, self, state.config.read_timeout]
+    )
+    state = %{state | reader_pid: reader_pid}
+    GenServer.cast(self, :flush_cmd_queue)
+    {:ok, state}
   end
 end
