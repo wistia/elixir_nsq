@@ -28,7 +28,6 @@ See these resources for more info on building client libraries:
 - [ ] TLS support
 - [ ] Auth support
 - [x] Delegates
-- [ ] Producer connection restart loop
 - [x] Test Message TOUCH
 - [x] Remove Connection dependency
 - [ ] Implement `NSQ.Consumer.starved?/1`
