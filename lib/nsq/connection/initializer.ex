@@ -15,14 +15,14 @@ defmodule NSQ.Connection.Initializer do
   @spec connect(%{nsqd: C.host_with_port}) :: {:ok, C.state} | {:error, String.t}
   def connect(%{nsqd: {host, port}} = state) do
     if should_connect?(state) do
-      socket_opts =
-        @socket_opts
-        |> Keyword.put(:send_timeout, state.config.write_timeout)
-        |> Keyword.put(:timeout, state.config.dial_timeout)
-        |> Keyword.put(:cert, path: state.config.tls_cert)
-        |> Keyword.put(:key, path: state.config.tls_key)
-        |> Keyword.put(:versions, path: ssl_versions(state.config.tls_min_version))
-        |> Keyword.put(:verify, false)
+      socket_opts = @socket_opts |> Keyword.merge(
+        send_timeout: state.config.write_timeout,
+        timeout: state.config.dial_timeout,
+        cert: [path: state.config.tls_cert],
+        key: [path: state.config.tls_key],
+        versions: ssl_versions(state.config.tls_min_version),
+        verify: false,
+      )
 
       case Socket.TCP.connect(host, port, socket_opts) do
         {:ok, socket} ->
@@ -58,6 +58,7 @@ defmodule NSQ.Connection.Initializer do
   @spec do_handshake(C.state) :: {:ok, C.state}
   def do_handshake(conn_state) do
     conn_state |> send_magic_v2
+
     {:ok, conn_state} = identify(conn_state)
 
     # Producers don't have a channel, so they won't do this.
