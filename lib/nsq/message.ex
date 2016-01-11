@@ -113,7 +113,7 @@ defmodule NSQ.Message do
   """
   def fin(message) do
     Logger.debug("(#{inspect message.connection}) fin msg ID #{message.id}")
-    :gen_tcp.send(message.socket, encode({:fin, message.id}))
+    message.socket |> Socket.Stream.send(encode({:fin, message.id}))
     GenEvent.notify(message.event_manager_pid, {:message_finished, message})
     GenServer.call(message.consumer, {:start_stop_continue_backoff, :resume})
     GenEvent.notify(message.event_manager_pid, :resume)
@@ -135,7 +135,7 @@ defmodule NSQ.Message do
     else
       Logger.debug("(#{inspect message.connection}) requeue msg ID #{message.id}, delay #{delay}, backoff #{backoff}")
     end
-    :gen_tcp.send(message.socket, encode({:req, message.id, delay}))
+    message.socket |> Socket.Stream.send(encode({:req, message.id, delay}))
     GenEvent.notify(message.event_manager_pid, {:message_requeued, message})
     if backoff do
       GenServer.call(message.consumer, {:start_stop_continue_backoff, :backoff})
@@ -153,7 +153,7 @@ defmodule NSQ.Message do
   """
   def touch(message) do
     Logger.debug("(#{message.connection}) touch msg ID #{message.id}")
-    :gen_tcp.send(message.socket, encode({:touch, message.id}))
+    message.socket |> Socket.Stream.send!(encode({:touch, message.id}))
   end
 
   # ------------------------------------------------------- #

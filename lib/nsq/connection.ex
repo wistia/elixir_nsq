@@ -43,7 +43,7 @@ defmodule NSQ.Connection do
   # ------------------------------------------------------- #
   @project ElixirNsq.Mixfile.project
   @user_agent "#{@project[:app]}/#{@project[:version]}"
-  @socket_opts [:binary, active: false, deliver: :term, packet: :raw]
+  @socket_opts [as: :binary, active: false, deliver: :term, packet: :raw]
   @initial_state %{
     parent: nil,
     socket: nil,
@@ -124,7 +124,7 @@ defmodule NSQ.Connection do
     case msg do
       {:response, "_heartbeat_"} ->
         GenEvent.notify(state.event_manager_pid, :heartbeat)
-        :gen_tcp.send(socket, encode(:noop))
+        socket |> Socket.Stream.send!(encode(:noop))
 
       {:response, data} ->
         GenEvent.notify(state.event_manager_pid, {:response, data})
@@ -311,7 +311,7 @@ defmodule NSQ.Connection do
   back to the connection for handling.
   """
   def recv_nsq_messages(sock, conn, timeout) do
-    case :gen_tcp.recv(sock, 4, timeout) do
+    case sock |> Socket.Stream.recv(4, timeout: timeout) do
       {:error, :timeout} ->
         # If publishing is quiet, we won't receive any messages in the timeout.
         # This is fine. Let's just try again!
@@ -320,7 +320,9 @@ defmodule NSQ.Connection do
         # Got a message! Decode it and let the connection know. We just
         # received data on the socket to get the size of this message, so if we
         # timeout in here, that's probably indicative of a problem.
-        {:ok, raw_msg_data} = :gen_tcp.recv(sock, msg_size, timeout)
+
+        {:ok, raw_msg_data} =
+          sock |> Socket.Stream.recv(msg_size, timeout: timeout)
         decoded = decode(raw_msg_data)
         GenServer.cast(conn, {:nsq_msg, decoded})
         recv_nsq_messages(sock, conn, timeout)
@@ -388,8 +390,12 @@ defmodule NSQ.Connection do
   @spec connect(%{nsqd: host_with_port}) :: {:ok, conn_state} | {:error, String.t}
   defp connect(%{nsqd: {host, port}} = state) do
     if should_connect?(state) do
-      socket_opts = @socket_opts ++ [send_timeout: state.config.write_timeout]
-      case :gen_tcp.connect(to_char_list(host), port, socket_opts, state.config.dial_timeout) do
+      socket_opts =
+        @socket_opts
+        |> Keyword.put(:send_timeout, state.config.write_timeout)
+        |> Keyword.put(:timeout, state.config.dial_timeout)
+
+      case Socket.TCP.connect(host, port, socket_opts) do
         {:ok, socket} ->
           state = %{state | socket: socket}
           {:ok, state} = do_handshake(state)
@@ -424,14 +430,14 @@ defmodule NSQ.Connection do
   @spec send_magic_v2(pid) :: :ok
   defp send_magic_v2(socket) do
     Logger.debug("(#{inspect self}) sending magic v2...")
-    :ok = :gen_tcp.send(socket, encode(:magic_v2))
+    socket |> Socket.Stream.send!(encode(:magic_v2))
   end
 
   @spec identify(pid, conn_state) :: {:ok, binary}
   defp identify(socket, conn_state) do
     Logger.debug("(#{inspect self}) identifying...")
     identify_obj = encode({:identify, identify_props(conn_state)})
-    :ok = :gen_tcp.send(socket, identify_obj)
+    socket |> Socket.Stream.send!(identify_obj)
     {:response, json} = recv_nsq_response(socket, conn_state)
     {:ok, _conn_state} = update_from_identify_response(conn_state, json)
   end
@@ -457,23 +463,28 @@ defmodule NSQ.Connection do
 
   @spec recv_nsq_response(pid, map) :: {:response, binary}
   defp recv_nsq_response(socket, conn_state) do
-    {:ok, <<msg_size :: size(32)>>} = :gen_tcp.recv(
-      socket, 4, conn_state.config.read_timeout
-    )
-    {:ok, raw_msg_data} = :gen_tcp.recv(
-      socket, msg_size, conn_state.config.read_timeout
-    )
+    {:ok, <<msg_size :: size(32)>>} =
+      socket |>
+      Socket.Stream.recv(4, timeout: conn_state.config.read_timeout)
+
+    {:ok, raw_msg_data} =
+      socket |>
+      Socket.Stream.recv(msg_size, timeout: conn_state.config.read_timeout)
+
     {:response, _response} = decode(raw_msg_data)
   end
 
   @spec subscribe(pid, conn_state) :: {:ok, binary}
   defp subscribe(socket, %{topic: topic, channel: channel} = conn_state) do
     Logger.debug "(#{inspect self}) subscribe to #{topic} #{channel}"
-    :gen_tcp.send(socket, encode({:sub, topic, channel}))
+    socket |>
+    Socket.Stream.send!(encode({:sub, topic, channel}))
 
     Logger.debug "(#{inspect self}) wait for subscription acknowledgment"
     expected = ok_msg
-    {:ok, ^expected} = :gen_tcp.recv(socket, 0, conn_state.config.read_timeout)
+    {:ok, ^expected} =
+      socket |>
+      Socket.Stream.recv(0, timeout: conn_state.config.read_timeout)
   end
 
   @spec identify_props(conn_state) :: conn_state
@@ -524,7 +535,7 @@ defmodule NSQ.Connection do
   @spec send_data_and_queue_resp(conn_state, tuple, {reference, pid}, atom) ::
     conn_state
   defp send_data_and_queue_resp(state, cmd, from, kind) do
-    :gen_tcp.send(state.socket, encode(cmd))
+    state.socket |> Socket.Stream.send!(encode(cmd))
     if kind == :noresponse do
       state
     else

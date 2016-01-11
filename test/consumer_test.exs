@@ -207,6 +207,7 @@ defmodule NSQ.ConsumerTest do
     conn_state = Conn.get_state(conn1)
 
     Logger.warn "Closing socket as part of test..."
+    Socket.Stream.close(conn_state.socket)
     :gen_tcp.close(conn_state.socket)
 
     # Normally dead connections hang around until the next discovery loop run,
