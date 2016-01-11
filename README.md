@@ -24,7 +24,7 @@ See these resources for more info on building client libraries:
 - [x] Respect configured write_timeout
 - [x] Handle errors reported by NSQD
 - [x] Include Procfile for running nsqd/nsqlookupd for tests
-- [ ] Graceful connection closing
+- [x] Graceful connection closing
 - [ ] TLS support
 - [ ] Auth support
 - [x] Delegates
