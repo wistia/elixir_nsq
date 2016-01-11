@@ -25,7 +25,7 @@ See these resources for more info on building client libraries:
 - [x] Handle errors reported by NSQD
 - [x] Include Procfile for running nsqd/nsqlookupd for tests
 - [x] Graceful connection closing
-- [ ] TLS support
+- [x] TLS support
 - [ ] Auth support
 - [x] Delegates
 - [x] Test Message TOUCH
