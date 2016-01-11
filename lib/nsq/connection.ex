@@ -329,7 +329,7 @@ defmodule NSQ.Connection do
   """
   @spec do_handshake(conn_state) :: {:ok, conn_state}
   def do_handshake(conn_state) do
-    conn_state.socket |> send_magic_v2
+    conn_state |> send_magic_v2
     {:ok, conn_state} = identify(conn_state)
 
     # Producers don't have a channel, so they won't do this.
@@ -419,10 +419,10 @@ defmodule NSQ.Connection do
       state.connect_attempts <= state.config.max_reconnect_attempts
   end
 
-  @spec send_magic_v2(pid) :: :ok
-  defp send_magic_v2(socket) do
+  @spec send_magic_v2(conn_state) :: :ok
+  defp send_magic_v2(state) do
     Logger.debug("(#{inspect self}) sending magic v2...")
-    socket |> Socket.Stream.send!(encode(:magic_v2))
+    state.socket |> Socket.Stream.send!(encode(:magic_v2))
   end
 
   @spec identify(conn_state) :: {:ok, binary}
@@ -430,14 +430,8 @@ defmodule NSQ.Connection do
     Logger.debug("(#{inspect self}) identifying...")
     identify_obj = encode({:identify, identify_props(conn_state)})
     conn_state.socket |> Socket.Stream.send!(identify_obj)
-    {:response, json} = recv_nsq_response(conn_state.socket, conn_state)
+    {:response, json} = recv_nsq_response(conn_state)
     {:ok, _conn_state} = update_from_identify_response(conn_state, json)
-  end
-
-  defp wait_for_ok(socket, timeout) do
-    expected = ok_msg
-    {:ok, ^expected} =
-      socket |> Socket.Stream.recv(byte_size(expected), timeout: timeout)
   end
 
   @spec update_from_identify_response(map, binary) :: map
@@ -481,14 +475,14 @@ defmodule NSQ.Connection do
     end
   end
 
-  @spec recv_nsq_response(pid, map) :: {:response, binary}
-  defp recv_nsq_response(socket, conn_state) do
+  @spec recv_nsq_response(conn_state) :: {:response, binary}
+  defp recv_nsq_response(conn_state) do
     {:ok, <<msg_size :: size(32)>>} =
-      socket |>
+      conn_state.socket |>
       Socket.Stream.recv(4, timeout: conn_state.config.read_timeout)
 
     {:ok, raw_msg_data} =
-      socket |>
+      conn_state.socket |>
       Socket.Stream.recv(msg_size, timeout: conn_state.config.read_timeout)
 
     {:response, _response} = decode(raw_msg_data)
@@ -629,5 +623,11 @@ defmodule NSQ.Connection do
     catch
       :timeout, _ -> :timeout
     end
+  end
+
+  defp wait_for_ok(socket, timeout) do
+    expected = ok_msg
+    {:ok, ^expected} =
+      socket |> Socket.Stream.recv(byte_size(expected), timeout: timeout)
   end
 end
