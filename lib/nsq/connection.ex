@@ -335,19 +335,13 @@ defmodule NSQ.Connection do
   """
   @spec do_handshake(conn_state) :: {:ok, conn_state}
   def do_handshake(conn_state) do
-    conn_state = Task.async(fn ->
-      %{socket: socket, channel: channel} = conn_state
+    conn_state.socket |> send_magic_v2
+    {:ok, conn_state} = identify(conn_state)
 
-      socket |> send_magic_v2
-      {:ok, conn_state} = socket |> identify(conn_state)
-
-      # Producers don't have a channel, so they won't do this.
-      if channel do
-        socket |> subscribe(conn_state)
-      end
-
-      conn_state
-    end) |> Task.await(conn_state.config.dial_timeout)
+    # Producers don't have a channel, so they won't do this.
+    if conn_state.channel do
+      subscribe(conn_state)
+    end
 
     {:ok, conn_state}
   end
@@ -394,23 +388,26 @@ defmodule NSQ.Connection do
         @socket_opts
         |> Keyword.put(:send_timeout, state.config.write_timeout)
         |> Keyword.put(:timeout, state.config.dial_timeout)
+        |> Keyword.put(:cert, path: state.config.tls_cert)
+        |> Keyword.put(:key, path: state.config.tls_key)
+        |> Keyword.put(:verify, false)
 
       case Socket.TCP.connect(host, port, socket_opts) do
         {:ok, socket} ->
           state = %{state | socket: socket}
           {:ok, state} = do_handshake(state)
-          {:ok, state} = start_receiving_messages(socket, state)
+          {:ok, state} = start_receiving_messages(state)
           {:ok, reset_connects(state)}
         {:error, reason} ->
           if length(state.config.nsqlookupds) > 0 do
-            Logger.warn "(#{inspect self}) connect failed; discovery loop should respawn"
+            Logger.warn "(#{inspect self}) connect failed; #{reason}; discovery loop should respawn"
             {{:error, reason}, %{state | connect_attempts: state.connect_attempts + 1}}
           else
             if state.config.max_reconnect_attempts > 0 do
               Logger.warn "(#{inspect self}) connect failed; #{reason}; discovery loop should respawn"
               {{:error, reason}, %{state | connect_attempts: state.connect_attempts + 1}}
             else
-              Logger.error "(#{inspect self}) connect failed; reconnect turned off; terminating connection"
+              Logger.error "(#{inspect self}) connect failed; #{reason}; reconnect turned off; terminating connection"
               Process.exit(self, :connect_failed)
             end
           end
@@ -433,13 +430,19 @@ defmodule NSQ.Connection do
     socket |> Socket.Stream.send!(encode(:magic_v2))
   end
 
-  @spec identify(pid, conn_state) :: {:ok, binary}
-  defp identify(socket, conn_state) do
+  @spec identify(conn_state) :: {:ok, binary}
+  defp identify(conn_state) do
     Logger.debug("(#{inspect self}) identifying...")
     identify_obj = encode({:identify, identify_props(conn_state)})
-    socket |> Socket.Stream.send!(identify_obj)
-    {:response, json} = recv_nsq_response(socket, conn_state)
+    conn_state.socket |> Socket.Stream.send!(identify_obj)
+    {:response, json} = recv_nsq_response(conn_state.socket, conn_state)
     {:ok, _conn_state} = update_from_identify_response(conn_state, json)
+  end
+
+  defp wait_for_ok(socket, timeout) do
+    expected = ok_msg
+    {:ok, ^expected} =
+      socket |> Socket.Stream.recv(byte_size(expected), timeout: timeout)
   end
 
   @spec update_from_identify_response(map, binary) :: map
@@ -458,6 +461,12 @@ defmodule NSQ.Connection do
       conn_state = %{conn_state | msg_timeout: conn_state.config.msg_timeout}
     end
 
+    if parsed["tls_v1"] == true do
+      socket = Socket.SSL.connect!(conn_state.socket)
+      conn_state = %{conn_state | socket: socket}
+      socket |> wait_for_ok(conn_state.config.read_timeout)
+    end
+
     {:ok, conn_state}
   end
 
@@ -474,17 +483,13 @@ defmodule NSQ.Connection do
     {:response, _response} = decode(raw_msg_data)
   end
 
-  @spec subscribe(pid, conn_state) :: {:ok, binary}
-  defp subscribe(socket, %{topic: topic, channel: channel} = conn_state) do
+  @spec subscribe(conn_state) :: {:ok, binary}
+  defp subscribe(%{socket: socket, topic: topic, channel: channel} = conn_state) do
     Logger.debug "(#{inspect self}) subscribe to #{topic} #{channel}"
-    socket |>
-    Socket.Stream.send!(encode({:sub, topic, channel}))
+    socket |> Socket.Stream.send!(encode({:sub, topic, channel}))
 
     Logger.debug "(#{inspect self}) wait for subscription acknowledgment"
-    expected = ok_msg
-    {:ok, ^expected} =
-      socket |>
-      Socket.Stream.recv(byte_size(expected), timeout: conn_state.config.read_timeout)
+    socket |> wait_for_ok(conn_state.config.read_timeout)
   end
 
   @spec identify_props(conn_state) :: conn_state
@@ -496,7 +501,7 @@ defmodule NSQ.Connection do
       heartbeat_interval: config.heartbeat_interval,
       output_buffer: config.output_buffer_size,
       output_buffer_timeout: config.output_buffer_timeout,
-      tls_v1: false,
+      tls_v1: true,
       snappy: false,
       deflate: false,
       sample_rate: 0,
@@ -557,8 +562,8 @@ defmodule NSQ.Connection do
     end
   end
 
-  @spec start_receiving_messages(pid, conn_state) :: {:ok, conn_state}
-  defp start_receiving_messages(socket, state) do
+  @spec start_receiving_messages(conn_state) :: {:ok, conn_state}
+  defp start_receiving_messages(%{socket: socket} = state) do
     reader_pid = spawn_link(
       __MODULE__,
       :recv_nsq_messages,

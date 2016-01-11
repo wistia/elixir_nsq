@@ -77,7 +77,10 @@ defmodule NSQ.Config do
 	  # tls_key - String path to file containing private key for certificate
 	  # tls_min_version - String indicating the minimum version of tls acceptable ('ssl3.0', 'tls1.0', 'tls1.1', 'tls1.2')
     tls_v1: false,
-    tls_config: nil,
+    tls_insecure_skip_verify: false,
+    tls_cert: nil,
+    tls_key: nil,
+    tls_min_version: nil,
 
     # Compression settings
     deflate: false,
