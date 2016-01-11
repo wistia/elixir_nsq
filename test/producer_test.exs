@@ -25,7 +25,8 @@ defmodule NSQ.ProducerTest do
     Enum.map 0..100, fn(_i) -> NSQ.Producer.pub(producer, "test 1") end
 
     lookupds = [{"127.0.0.1", 6771}, {"127.0.0.1", 6781}]
-    discovered_nsqds = NSQ.Connection.nsqds_from_lookupds(lookupds, "__nsq_producer_test_topic__")
+    discovered_nsqds =
+      lookupds |> NSQ.Lookupd.nsqds_with_topic("__nsq_producer_test_topic__")
 
     # Sort the arrays so we can compare them.
     configured_nsqds = Enum.sort_by(NSQ.Config.normalize_hosts(@configured_nsqds), &inspect(&1))

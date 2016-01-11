@@ -191,53 +191,6 @@ defmodule NSQ.Connection do
     Process.exit(self, :normal)
   end
 
-  @spec nsqds_from_lookupds([host_with_port], String.t) :: [host_with_port]
-  def nsqds_from_lookupds(lookupds, topic) do
-    responses = Enum.map(lookupds, &query_lookupd(&1, topic))
-    nsqds = Enum.map responses, fn(response) ->
-      Enum.map response["producers"] || [], fn(producer) ->
-        if producer do
-          {producer["broadcast_address"], producer["tcp_port"]}
-        else
-          nil
-        end
-      end
-    end
-    nsqds |>
-      List.flatten |>
-      Enum.uniq |>
-      Enum.reject(fn(v) -> v == nil end)
-  end
-
-  @spec query_lookupd(host_with_port, String.t) :: map
-  def query_lookupd({host, port}, topic) do
-    lookupd_url = "http://#{host}:#{port}/lookup?topic=#{topic}"
-    headers = [{"Accept", "application/vnd.nsq; version=1.0"}]
-    try do
-      case HTTPotion.get(lookupd_url, headers: headers) do
-        %HTTPotion.Response{status_code: 200, body: body, headers: headers} ->
-          if body == nil || body == "" do
-            body = "{}"
-          end
-
-          if headers[:"X-Nsq-Content-Type"] == "nsq; version=1.0" do
-            Poison.decode!(body)
-          else
-            %{status_code: 200, status_txt: "OK", data: body}
-          end
-        %HTTPotion.Response{status_code: 404} ->
-          %{}
-        %HTTPotion.Response{status_code: status, body: body} ->
-          Logger.error "Unexpected status code from #{lookupd_url}: #{status}"
-          %{status_code: status, status_txt: nil, data: body}
-      end
-    rescue
-      e in HTTPotion.HTTPError ->
-        Logger.error "Error connecting to #{lookupd_url}: #{inspect e}"
-        %{status_code: nil, status_txt: nil, data: nil}
-    end
-  end
-
   @doc """
   Calls the command and waits for a response. If a command shouldn't have a
   response, use cmd_noreply.

@@ -325,9 +325,8 @@ defmodule NSQ.Consumer do
     nsqds = cond do
       length(cons_state.config.nsqlookupds) > 0 ->
         Logger.debug "(#{inspect self}) Discovering nsqds via nsqlookupds #{inspect cons_state.config.nsqlookupds}"
-        NSQ.Connection.nsqds_from_lookupds(
-          cons_state.config.nsqlookupds, cons_state.topic
-        )
+        cons_state.config.nsqlookupds
+        |> NSQ.Lookupd.nsqds_with_topic(cons_state.topic)
 
       length(cons_state.config.nsqds) > 0 ->
         Logger.debug "(#{inspect self}) Using configured nsqds #{inspect cons_state.config.nsqds}"
