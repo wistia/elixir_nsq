@@ -1,4 +1,4 @@
-nsqd1: nsqd --tcp-address=127.0.0.1:6750 --http-address=127.0.0.1:6751 --worker-id=512 --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:6770 --lookupd-tcp-address=127.0.0.1:6780
-nsqd2: nsqd --tcp-address=127.0.0.1:6760 --http-address=127.0.0.1:6761 --worker-id=513 --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:6770 --lookupd-tcp-address=127.0.0.1:6780
+nsqd1: nsqd --tcp-address=127.0.0.1:6750 --http-address=127.0.0.1:6751 --https-address=127.0.0.1:6752 --worker-id=512 --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:6770 --lookupd-tcp-address=127.0.0.1:6780 --tls-required=false --tls-root-ca-file=test/ssl_keys/elixirNsq.pem --tls-key=test/ssl_keys/elixir_nsq.key --tls-cert=test/ssl_keys/elixir_nsq.crt
+nsqd2: nsqd --tcp-address=127.0.0.1:6760 --http-address=127.0.0.1:6761 --https-address=127.0.0.1:6762 --worker-id=513 --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:6770 --lookupd-tcp-address=127.0.0.1:6780 --tls-required=false --tls-root-ca-file=test/ssl_keys/elixirNsq.pem --tls-key=test/ssl_keys/elixir_nsq.key --tls-cert=test/ssl_keys/elixir_nsq.crt
 nsqlookupd1: nsqlookupd --tcp-address=127.0.0.1:6770 --http-address=127.0.0.1:6771 --broadcast-address=127.0.0.1
 nsqlookupd2: nsqlookupd --tcp-address=127.0.0.1:6780 --http-address=127.0.0.1:6781 --broadcast-address=127.0.0.1

@@ -208,7 +208,6 @@ defmodule NSQ.ConsumerTest do
 
     Logger.warn "Closing socket as part of test..."
     Socket.Stream.close(conn_state.socket)
-    :gen_tcp.close(conn_state.socket)
 
     # Normally dead connections hang around until the next discovery loop run,
     # but if we waited that long, we wouldn't be able to check if it was
@@ -527,5 +526,31 @@ defmodule NSQ.ConsumerTest do
     assert conn2_rdy > 0
     assert rdy_distributed_count >= 10 && rdy_distributed_count <= 12
     assert abs(conn1_rdy - conn2_rdy) < 8
+  end
+
+  test "works with tls" do
+    Logger.configure(level: :debug)
+    test_pid = self
+    NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+      nsqds: [{"127.0.0.1", 6750}],
+      tls_v1: true,
+      tls_insecure_skip_verify: true,
+      tls_cert: "#{__DIR__}/ssl_keys/elixir_nsq.crt",
+      tls_key: "#{__DIR__}/ssl_keys/elixir_nsq.key",
+      tls_min_version: :"tlsv1.2",
+      max_reconnect_attempts: 0,
+      message_handler: fn(body, msg) ->
+        assert body == "HTTP message"
+        assert msg.attempts == 1
+        send(test_pid, :handled)
+        :ok
+      end
+    })
+
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
+    assert_receive(:handled, 2000)
+
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
+    assert_receive(:handled, 2000)
   end
 end
