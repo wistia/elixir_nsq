@@ -7,8 +7,6 @@ defmodule NSQ.Connection do
   # Directives                                              #
   # ------------------------------------------------------- #
   require Logger
-  require HTTPotion
-  require HTTPotion.Response
   import NSQ.Protocol
   alias NSQ.Connection.Command
   alias NSQ.Connection.Initializer
