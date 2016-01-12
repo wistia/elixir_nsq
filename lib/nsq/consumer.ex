@@ -249,8 +249,7 @@ defmodule NSQ.Consumer do
   @spec handle_call({:max_in_flight, integer}, {reference, pid}, cons_state) ::
     {:reply, :ok, cons_state}
   def handle_call({:max_in_flight, new_max_in_flight}, _from, state) do
-    state = %{state | max_in_flight: new_max_in_flight}
-    {:reply, :ok, state}
+    {:reply, :ok, %{state | max_in_flight: new_max_in_flight}}
   end
 
 
