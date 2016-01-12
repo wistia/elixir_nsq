@@ -11,9 +11,10 @@ defmodule NSQ.ConsumerTest do
   use ExUnit.Case, async: true
   doctest NSQ.Consumer
   alias NSQ.Consumer, as: Cons
+  alias NSQ.Consumer.Helpers, as: H
   alias HTTPotion, as: HTTP
   alias NSQ.Connection, as: Conn
-  alias NSQ.ConnInfo, as: ConnInfo
+  alias NSQ.ConnInfo
   require Logger
 
   @test_topic "__nsq_consumer_test_topic__"
@@ -377,7 +378,7 @@ defmodule NSQ.ConsumerTest do
 
     # We start off with RDY=1 for each connection. It would get naturally
     # bumped when it runs maybe_update_rdy after processing the first message.
-    assert Cons.total_rdy_count(cons_state) == 2
+    assert H.total_rdy_count(cons_state) == 2
     assert cons_state.backoff_counter == 0
     assert cons_state.backoff_duration == 0
     [1, 1] = ConnInfo.fetch(cons_state, conn1, [:rdy_count, :last_rdy])
@@ -395,7 +396,7 @@ defmodule NSQ.ConsumerTest do
     assert cons_state.backoff_duration == 200
     [0, 0] = ConnInfo.fetch(cons_state, conn1, [:rdy_count, :last_rdy])
     [0, 0] = ConnInfo.fetch(cons_state, conn2, [:rdy_count, :last_rdy])
-    assert Cons.total_rdy_count(cons_state) == 0
+    assert H.total_rdy_count(cons_state) == 0
 
     # Wait ~200ms for resume to be called, which should put us in "test the
     # waters" mode. In this mode, one random connection has RDY set to 1. NSQD
@@ -406,7 +407,7 @@ defmodule NSQ.ConsumerTest do
       ConnInfo.fetch(cons_state, conn2, :rdy_count)
     assert 1 == ConnInfo.fetch(cons_state, conn1, :last_rdy) +
       ConnInfo.fetch(cons_state, conn2, :last_rdy)
-    assert Cons.total_rdy_count(cons_state) == 1
+    assert H.total_rdy_count(cons_state) == 1
     assert_receive({:message_requeued, _}, 5100)
     assert_receive(:backoff, 1000)
 
@@ -414,7 +415,7 @@ defmodule NSQ.ConsumerTest do
     cons_state = Cons.get_state(consumer)
     [0, 0] = ConnInfo.fetch(cons_state, conn1, [:rdy_count, :last_rdy])
     [0, 0] = ConnInfo.fetch(cons_state, conn2, [:rdy_count, :last_rdy])
-    assert Cons.total_rdy_count(cons_state) == 0
+    assert H.total_rdy_count(cons_state) == 0
 
     # Then we'll go into "test the waters mode" again in 200ms.
     :timer.sleep(250)
@@ -423,7 +424,7 @@ defmodule NSQ.ConsumerTest do
       ConnInfo.fetch(cons_state, conn2, :rdy_count)
     assert 1 == ConnInfo.fetch(cons_state, conn1, :last_rdy) +
       ConnInfo.fetch(cons_state, conn2, :last_rdy)
-    assert Cons.total_rdy_count(cons_state) == 1
+    assert H.total_rdy_count(cons_state) == 1
 
     # After the message handler runs successfully, it decrements the
     # backoff_counter. We need one more successful message to decrement the
@@ -438,7 +439,7 @@ defmodule NSQ.ConsumerTest do
     cons_state = Cons.get_state(consumer)
     [50, 50] = ConnInfo.fetch(cons_state, conn1, [:rdy_count, :last_rdy])
     [50, 50] = ConnInfo.fetch(cons_state, conn2, [:rdy_count, :last_rdy])
-    assert Cons.total_rdy_count(cons_state) == 100
+    assert H.total_rdy_count(cons_state) == 100
   end
 
   test "retry_rdy flow" do
@@ -490,7 +491,7 @@ defmodule NSQ.ConsumerTest do
     cons = Cons.get(cons_sup_pid)
     cons_state = Cons.get_state(cons)
     [conn1, conn2] = Cons.get_connections(cons)
-    assert Cons.total_rdy_count(cons_state) == 1
+    assert H.total_rdy_count(cons_state) == 1
     assert 1 == ConnInfo.fetch(cons_state, conn1, :rdy_count) +
       ConnInfo.fetch(cons_state, conn2, :rdy_count)
     :timer.sleep(1500)

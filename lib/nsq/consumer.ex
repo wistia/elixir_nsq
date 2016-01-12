@@ -80,6 +80,9 @@ defmodule NSQ.Consumer do
   use GenServer
   require Logger
   import NSQ.Protocol
+  import NSQ.Consumer.Helpers
+  alias NSQ.Consumer.Backoff
+  alias NSQ.Consumer.RDY
   alias NSQ.ConnInfo, as: ConnInfo
 
   # ------------------------------------------------------- #
@@ -119,6 +122,7 @@ defmodule NSQ.Consumer do
   set for a connection's state map.
   """
   @type cons_state :: %{conn_sup_pid: pid, config: NSQ.Config.t, conn_info_pid: pid}
+  @type state :: %{conn_sup_pid: pid, config: NSQ.Config.t, conn_info_pid: pid}
 
   # ------------------------------------------------------- #
   # Behaviour Implementation                                #
@@ -170,12 +174,12 @@ defmodule NSQ.Consumer do
 
   @doc """
   The RDY loop periodically calls this to make sure RDY is balanced among our
-  connections. Called from ConsumerSupervisor.
+  connections.
   """
   @spec handle_call(:redistribute_rdy, {reference, pid}, cons_state) ::
     {:reply, :ok, cons_state}
   def handle_call(:redistribute_rdy, _from, cons_state) do
-    {:ok, cons_state} = redistribute_rdy(self, cons_state)
+    {:ok, cons_state} = RDY.redistribute(self, cons_state)
     {:reply, :ok, cons_state}
   end
 
@@ -208,7 +212,7 @@ defmodule NSQ.Consumer do
   @spec handle_call({:start_stop_continue_backoff, atom}, {reference, pid}, cons_state) ::
     {:reply, :ok, cons_state}
   def handle_call({:start_stop_continue_backoff, backoff_flag}, _from, cons_state) do
-    {:ok, cons_state} = start_stop_continue_backoff(self, backoff_flag, cons_state)
+    {:ok, cons_state} = Backoff.start_stop_continue(self, backoff_flag, cons_state)
     {:reply, :ok, cons_state}
   end
 
@@ -218,7 +222,7 @@ defmodule NSQ.Consumer do
   @spec handle_call({:update_rdy, connection, integer}, {reference, pid}, cons_state) ::
     {:reply, :ok, cons_state}
   def handle_call({:update_rdy, conn, count}, _from, cons_state) do
-    {:ok, cons_state} = update_rdy(self, conn, count, cons_state)
+    {:ok, cons_state} = RDY.update(self, conn, count, cons_state)
     {:reply, :ok, cons_state}
   end
 
@@ -272,11 +276,11 @@ defmodule NSQ.Consumer do
   end
 
   @doc """
-  Called from `resume_from_backoff_later/3`. Not for external use.
+  Called from `Backoff.resume_later/3`. Not for external use.
   """
   @spec handle_cast(:resume, cons_state) :: {:noreply, cons_state}
   def handle_cast(:resume, state) do
-    {:ok, cons_state} = resume(self, state)
+    {:ok, cons_state} = Backoff.resume(self, state)
     {:noreply, cons_state}
   end
 
@@ -288,7 +292,7 @@ defmodule NSQ.Consumer do
     {:noreply, cons_state}
   def handle_cast({:maybe_update_rdy, {_host, _port} = nsqd}, cons_state) do
     conn = conn_from_nsqd(self, nsqd, cons_state)
-    {:ok, cons_state} = maybe_update_rdy(self, conn, cons_state)
+    {:ok, cons_state} = RDY.maybe_update(self, conn, cons_state)
     {:noreply, cons_state}
   end
 
@@ -388,12 +392,12 @@ defmodule NSQ.Consumer do
 
       # We normally set RDY to 1, but if we're spawning more connections than
       # max_in_flight, we don't want to break our contract. In that case, the
-      # `redistribute_rdy` loop will take care of getting this connection some
+      # `RDY.redistribute` loop will take care of getting this connection some
       # messages later.
       remaining_rdy = cons_state.max_in_flight - total_rdy_count(cons_state)
       if remaining_rdy > 0 do
         conn = conn_from_nsqd(cons, nsqd, cons_state)
-        {:ok, cons_state} = send_rdy(conn, 1, cons_state)
+        {:ok, cons_state} = RDY.transmit(conn, 1, cons_state)
       end
 
       {:ok, cons_state}
@@ -534,305 +538,6 @@ defmodule NSQ.Consumer do
     GenServer.call(cons, :state)
   end
 
-  @doc """
-  Called from `handle_call/3` when we need to decide what to do about the
-  current backoff state. Not for external use.
-  """
-  @spec start_stop_continue_backoff(pid, atom, cons_state) :: {:ok, cons_state}
-  def start_stop_continue_backoff(cons, backoff_signal, cons_state) do
-    {backoff_updated, backoff_counter} = cond do
-      backoff_signal == :resume ->
-        {true, cons_state.backoff_counter - 1}
-      backoff_signal == :backoff ->
-        {true, cons_state.backoff_counter + 1}
-      true ->
-        {false, cons_state.backoff_counter}
-    end
-    cons_state = %{cons_state | backoff_counter: backoff_counter}
-
-    cond do
-      backoff_counter == 0 && backoff_updated ->
-        count = per_conn_max_in_flight(cons_state)
-        Logger.warn "exiting backoff, returning all to RDY #{count}"
-        cons_state = Enum.reduce get_connections(cons_state), cons_state, fn(conn, last_state) ->
-          {:ok, new_state} = update_rdy(cons, conn, count, last_state)
-          new_state
-        end
-        GenEvent.notify(cons_state.event_manager_pid, :resume)
-        {:ok, cons_state}
-      backoff_counter > 0 ->
-        backoff_duration = calculate_backoff(cons_state)
-        Logger.warn "backing off for #{backoff_duration / 1000} seconds (backoff level #{backoff_counter}), setting all to RDY 0"
-        # send RDY 0 immediately (to *all* connections)
-        cons_state = Enum.reduce get_connections(cons_state), cons_state, fn(conn, last_state) ->
-          {:ok, new_state} = update_rdy(cons, conn, 0, last_state)
-          new_state
-        end
-        {:ok, cons_state} = resume_from_backoff_later(cons, backoff_duration, cons_state)
-        GenEvent.notify(cons_state.event_manager_pid, backoff_signal)
-        {:ok, cons_state}
-      true ->
-        {:ok, cons_state}
-    end
-  end
-
-  @doc """
-  Returns the backoff duration in milliseconds. Different strategies can
-  technically be used, but currently there is only `:exponential` in production
-  mode and `:test` for tests. Not for external use.
-  """
-  @spec calculate_backoff(cons_state) :: integer
-  def calculate_backoff(cons_state) do
-    case cons_state.config.backoff_strategy do
-      :exponential -> exponential_backoff(cons_state)
-      :test -> 200
-    end
-  end
-
-  @doc """
-  Used to calculate backoff in milliseconds in production. We include jitter so
-  that, if we have many consumers in a cluster, we avoid the thundering herd
-  problem when they attempt to resume. Not for external use.
-  """
-  @spec exponential_backoff(cons_state) :: integer
-  def exponential_backoff(cons_state) do
-    attempts = cons_state.backoff_counter
-    mult = cons_state.config.backoff_multiplier
-    min(
-      mult * :math.pow(2, attempts),
-      cons_state.config.max_backoff_duration
-    ) |> round
-  end
-
-  @doc """
-  Try resuming from backoff in a few seconds. Not for external use.
-  """
-  @spec resume_from_backoff_later(pid, integer, cons_state) ::
-    {:ok, cons_state}
-  def resume_from_backoff_later(cons, duration, cons_state) do
-    Task.start_link fn ->
-      :timer.sleep(duration)
-      GenServer.cast(cons, :resume)
-    end
-    cons_state = %{cons_state | backoff_duration: duration}
-    {:ok, cons_state}
-  end
-
-  @doc """
-  This function is called asynchronously from `resume_from_backoff_later`. It
-  will cause one connection to have RDY 1. We only resume after this if
-  messages succeed a number of times == backoff_counter. (That logic is in
-  start_stop_continue_backoff.)
-  """
-  @spec resume(pid, cons_state) :: {:ok, cons_state}
-  def resume(cons, cons_state) do
-    if cons_state.backoff_duration == 0 || cons_state.backoff_counter == 0 do
-      # looks like we successfully left backoff mode already
-      {:ok, cons_state}
-    else
-      if cons_state.stop_flag do
-        {:ok, %{cons_state | backoff_duration: 0}}
-      else
-        conn_count = count_connections(cons_state)
-
-        if conn_count == 0 do
-          # This could happen if nsqlookupd suddenly stops discovering
-          # connections. Maybe a network partition?
-          Logger.warn("no connection available to resume")
-          Logger.warn("backing off for 1 second")
-          {:ok, cons_state} = resume_from_backoff_later(cons, 1000, cons_state)
-        else
-          # pick a random connection to test the waters
-          conn = random_connection_for_backoff(cons_state)
-          Logger.warn("(#{inspect conn}) backoff timeout expired, sending RDY 1")
-
-          # while in backoff only ever let 1 message at a time through
-          {:ok, cons_state} = update_rdy(cons, conn, 1, cons_state)
-        end
-
-        {:ok, %{cons_state | backoff_duration: 0}}
-      end
-    end
-  end
-
-  @doc """
-  This will only be triggered in odd cases where we're in backoff or when there
-  are more connections than max in flight. It will randomly change RDY on
-  some connections to 0 and 1 so that they're all guaranteed to eventually
-  process messages. Not for external use.
-  """
-  @spec redistribute_rdy(pid, cons_state) :: {:ok, cons_state}
-  def redistribute_rdy(cons, cons_state) do
-    if should_redistribute_rdy?(cons_state) do
-      conns = get_connections(cons_state)
-      conn_count = length(conns)
-
-      if conn_count > cons_state.max_in_flight do
-        Logger.debug """
-          redistributing RDY state
-          (#{conn_count} conns > #{cons_state.max_in_flight} max_in_flight)
-        """
-      end
-
-      if cons_state.backoff_counter > 0 && conn_count > 1 do
-        Logger.debug """
-          redistributing RDY state (in backoff and #{conn_count} conns > 1)
-        """
-      end
-
-      # Free up any connections that are RDY but not processing messages.
-      give_up_rdy_for_idle_connections(cons, cons_state)
-
-      # Determine how much RDY we can distribute. This needs to happen before
-      # we give up RDY, or max_in_flight will end up equalling RDY.
-      available_max_in_flight = get_available_max_in_flight(cons_state)
-
-      # Distribute it!
-      distribute_rdy_randomly(
-        cons, conns, available_max_in_flight, cons_state
-      )
-    else
-      # Nothing to do. This is the usual path!
-      {:ok, cons_state}
-    end
-  end
-
-  @doc """
-  If we're not in backoff mode and we've hit a "trigger point" to update RDY,
-  then go ahead and update RDY. Not for external use.
-  """
-  @spec maybe_update_rdy(pid, connection, cons_state) :: {:ok, cons_state}
-  def maybe_update_rdy(cons, conn, cons_state) do
-    if cons_state.backoff_counter > 0 || cons_state.backoff_duration > 0 do
-      # In backoff mode, we only let `start_stop_continue_backoff/3` handle
-      # this case.
-      Logger.debug """
-        (#{inspect conn}) skip sending RDY in_backoff:#{cons_state.backoff_counter} || in_backoff_timeout:#{cons_state.backoff_duration}
-      """
-      {:ok, cons_state}
-    else
-      [remain, last_rdy] = ConnInfo.fetch(
-        cons_state, ConnInfo.conn_id(conn), [:rdy_count, :last_rdy]
-      )
-      desired_rdy = per_conn_max_in_flight(cons_state)
-
-      if remain <= 1 || remain < (last_rdy / 4) || (desired_rdy > 0 && desired_rdy < remain) do
-        Logger.debug """
-          (#{inspect conn}) sending RDY #{desired_rdy} \
-          (#{remain} remain from last RDY #{last_rdy})
-        """
-        {:ok, _cons_state} = update_rdy(cons, conn, desired_rdy, cons_state)
-      else
-        Logger.debug """
-          (#{inspect conn}) skip sending RDY #{desired_rdy} \
-          (#{remain} remain out of last RDY #{last_rdy})
-        """
-        {:ok, cons_state}
-      end
-    end
-  end
-
-  @doc """
-  Try to update RDY for a given connection, taking configuration and the
-  current state into account. Not for external use.
-  """
-  @spec update_rdy(pid, connection, integer, cons_state) :: {:ok, cons_state}
-  def update_rdy(cons, conn, new_rdy, cons_state) do
-    conn_info = ConnInfo.fetch(cons_state, ConnInfo.conn_id(conn))
-
-    cancel_outstanding_rdy_retry(cons_state, conn)
-
-    # Cap the given RDY based on the connection config.
-    new_rdy = [new_rdy, conn_info.max_rdy] |> Enum.min |> round
-
-    # Cap the given RDY based on how much we can actually assign. Unless it's
-    # 0, in which case we'll be retrying.
-    max_possible_rdy = calc_max_possible_rdy(cons_state, conn_info)
-    if max_possible_rdy > 0 do
-      new_rdy = [new_rdy, max_possible_rdy] |> Enum.min |> round
-    end
-
-    if max_possible_rdy <= 0 && new_rdy > 0 do
-      if conn_info.rdy_count == 0 do
-        # Schedule update_rdy(consumer, conn, new_rdy) for this connection
-        # again in 5 seconds. This is to prevent eternal starvation.
-        {:ok, cons_state} = retry_rdy(cons, conn, new_rdy, cons_state)
-      end
-      {:ok, cons_state}
-    else
-      {:ok, _cons_state} = send_rdy(conn, new_rdy, cons_state)
-    end
-  end
-
-  @doc """
-  Delay for a configured interval, then call update_rdy. Not for external use.
-  """
-  @spec retry_rdy(pid, connection, integer, cons_state) :: {:ok, cons_state}
-  def retry_rdy(cons, conn, count, cons_state) do
-    delay = cons_state.config.rdy_retry_delay
-    Logger.debug("(#{inspect conn}) retry RDY in #{delay / 1000} seconds")
-
-    {:ok, retry_pid} = Task.start_link fn ->
-      :timer.sleep(delay)
-      GenServer.call(cons, {:update_rdy, conn, count})
-    end
-    ConnInfo.update(cons_state, ConnInfo.conn_id(conn), %{retry_rdy_pid: retry_pid})
-
-    {:ok, cons_state}
-  end
-
-  @doc """
-  Send a RDY command for the given connection.
-  """
-  @spec send_rdy(connection, integer, cons_state) :: {:ok, cons_state}
-  def send_rdy({_id, pid} = conn, count, cons_state) do
-    [last_rdy] = ConnInfo.fetch(cons_state, ConnInfo.conn_id(conn), [:last_rdy])
-
-    if count == 0 && last_rdy == 0 do
-      {:ok, cons_state}
-    else
-      # We intentionally don't match this GenServer.call. If the socket isn't
-      # set up or is erroring out, we don't want to propagate that connection
-      # error to the consumer.
-      NSQ.Connection.cmd_noresponse(pid, {:rdy, count})
-      {:ok, cons_state}
-    end
-  end
-
-  @doc """
-  Returns how much `max_in_flight` should be distributed to each connection.
-  If `max_in_flight` is less than the number of connections, then this always
-  returns 1 and they are randomly distributed via `redistribute_rdy`. Not for
-  external use.
-  """
-  @spec per_conn_max_in_flight(cons_state) :: integer
-  def per_conn_max_in_flight(cons_state) do
-    max_in_flight = cons_state.max_in_flight
-    conn_count = count_connections(cons_state)
-    min(max(1, max_in_flight / conn_count), max_in_flight) |> round
-  end
-
-  @doc """
-  Each connection is responsible for maintaining its own rdy_count in ConnInfo.
-  This function sums all the values of rdy_count for each connection, which
-  lets us get an accurate picture of a consumer's total RDY count. Not for
-  external use.
-  """
-  @spec total_rdy_count(pid) :: integer
-  def total_rdy_count(agent_pid) when is_pid(agent_pid) do
-    ConnInfo.reduce agent_pid, 0, fn({_, conn_info}, acc) ->
-      acc + conn_info.rdy_count
-    end
-  end
-
-  @doc """
-  Convenience function; uses the consumer state to get the conn info pid. Not
-  for external use.
-  """
-  @spec total_rdy_count(cons_state) :: integer
-  def total_rdy_count(%{conn_info_pid: agent_pid} = _cons_state) do
-    total_rdy_count(agent_pid)
-  end
 
   @doc """
   Public function to change `max_in_flight` for a consumer. The new value will
@@ -910,16 +615,8 @@ defmodule NSQ.Consumer do
     pid
   end
 
-  # ------------------------------------------------------- #
-  # Private Functions                                       #
-  # ------------------------------------------------------- #
-  @spec now() :: integer
-  defp now do
-    :calendar.datetime_to_gregorian_seconds(:calendar.universal_time)
-  end
-
   @spec count_connections(cons_state) :: integer
-  defp count_connections(cons_state) do
+  def count_connections(cons_state) do
     %{active: active} = Supervisor.count_children(cons_state.conn_sup_pid)
     if is_integer(active) do
       active
@@ -929,6 +626,9 @@ defmodule NSQ.Consumer do
     end
   end
 
+  # ------------------------------------------------------- #
+  # Private Functions                                       #
+  # ------------------------------------------------------- #
   @spec conn_already_discovered?(pid, connection, [host_with_port]) :: boolean
   defp conn_already_discovered?(cons, {conn_id, _}, discovered_nsqds) do
     Enum.any? discovered_nsqds, fn(nsqd) ->
@@ -944,38 +644,6 @@ defmodule NSQ.Consumer do
     end
   end
 
-  # Helper for redistribute_rdy; we set RDY to 1 for _some_ connections that
-  # were halted, randomly, until there's no more RDY left to assign.
-  @spec distribute_rdy_randomly(pid, [connection], integer, cons_state) ::
-    {:ok, cons_state}
-  defp distribute_rdy_randomly(cons, possible_conns, available_max_in_flight, cons_state) do
-    if length(possible_conns) == 0 || available_max_in_flight <= 0 do
-      {:ok, cons_state}
-    else
-      [conn|rest] = Enum.shuffle(possible_conns)
-      Logger.debug("(#{inspect conn}) redistributing RDY")
-      {:ok, cons_state} = update_rdy(cons, conn, 1, cons_state)
-      distribute_rdy_randomly(
-        cons, rest, available_max_in_flight - 1, cons_state
-      )
-    end
-  end
-
-  @spec should_redistribute_rdy?(cons_state) :: boolean
-  defp should_redistribute_rdy?(cons_state) do
-    conn_count = count_connections(cons_state)
-    in_backoff = cons_state.backoff_counter > 0
-    in_backoff_timeout = cons_state.backoff_duration > 0
-
-    !in_backoff_timeout
-      && conn_count > 0
-      && (
-        conn_count > cons_state.max_in_flight
-        || (in_backoff && conn_count > 1)
-        || cons_state.need_rdy_redistributed
-      )
-  end
-
   @spec conn_from_nsqd(pid, host_with_port, cons_state) :: connection
   defp conn_from_nsqd(cons, nsqd, cons_state) do
     needle = ConnInfo.conn_id(cons, nsqd)
@@ -983,78 +651,4 @@ defmodule NSQ.Consumer do
       needle == conn_id
     end
   end
-
-  @spec random_connection_for_backoff(cons_state) :: connection
-  defp random_connection_for_backoff(cons_state) do
-    if cons_state.config.backoff_strategy == :test do
-      # When testing, we're only sending 1 message at a time to a single
-      # nsqd. In this mode, instead of a random connection, always use the
-      # first one that was defined, which ends up being the last one in our
-      # list.
-      cons_state |> get_connections |> List.last
-    else
-      cons_state |> get_connections |> Enum.random
-    end
-  end
-
-  @spec give_up_rdy_for_idle_connections(pid, cons_state) :: [connection]
-  defp give_up_rdy_for_idle_connections(cons, cons_state) do
-    conns = get_connections(cons_state)
-    Enum.map conns, fn(conn) ->
-      conn_id = ConnInfo.conn_id(conn)
-      [last_msg_t, rdy_count] = ConnInfo.fetch(
-        cons_state, conn_id, [:last_msg_timestamp, :rdy_count]
-      )
-      sec_since_last_msg = now - last_msg_t
-      ms_since_last_msg = sec_since_last_msg * 1000
-
-      Logger.debug(
-        "(#{inspect conn}) rdy: #{rdy_count} (last message received #{sec_since_last_msg} seconds ago)"
-      )
-
-      is_idle = ms_since_last_msg > cons_state.config.low_rdy_idle_timeout
-      if rdy_count > 0 && is_idle do
-        Logger.debug("(#{inspect conn}) idle connection, giving up RDY")
-        {:ok, _cons_state} = update_rdy(cons, conn, 0, cons_state)
-      end
-
-      conn
-    end
-  end
-
-  # Cap available max in flight based on current RDY/backoff status.
-  defp get_available_max_in_flight(cons_state) do
-    total_rdy = total_rdy_count(cons_state)
-    if cons_state.backoff_counter > 0 do
-      # In backoff mode, we only ever want RDY=1 for the whole consumer. This
-      # makes sure that available is only 1 if total_rdy is 0.
-      1 - total_rdy
-    else
-      cons_state.max_in_flight - total_rdy
-    end
-  end
-
-  @spec cancel_outstanding_rdy_retry(cons_state, connection) :: any
-  defp cancel_outstanding_rdy_retry(cons_state, conn) do
-    conn_info = ConnInfo.fetch(cons_state, ConnInfo.conn_id(conn))
-
-    # If this is for a connection that's retrying, kill the timer and clean up.
-    if retry_pid = conn_info.retry_rdy_pid do
-      if Process.alive?(retry_pid) do
-        Logger.debug("(#{inspect conn}) rdy retry pid #{inspect retry_pid} detected, killing")
-        Process.exit(retry_pid, :normal)
-      end
-
-      ConnInfo.update(cons_state, ConnInfo.conn_id(conn), %{retry_rdy_pid: nil})
-    end
-  end
-
-  @spec calc_max_possible_rdy(cons_state, map) :: integer
-  defp calc_max_possible_rdy(cons_state, conn_info) do
-    rdy_count = conn_info.rdy_count
-    max_in_flight = cons_state.max_in_flight
-    total_rdy = total_rdy_count(cons_state)
-    max_in_flight - total_rdy + rdy_count
-  end
-
 end
