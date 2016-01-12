@@ -1,4 +1,4 @@
-defmodule NSQ.ConsumerSupervisor do
+defmodule NSQ.Consumer.Supervisor do
   use Supervisor
 
   def start_link(topic, channel, config, opts \\ []) do

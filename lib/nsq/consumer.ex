@@ -11,11 +11,11 @@ defmodule NSQ.Consumer do
   ## Simple Interface
 
   In standard practice, the only function a user should need to know about is
-  `NSQ.ConsumerSupervisor.start_link/3`. It takes a topic, a channel, and an
+  `NSQ.Consumer.Supervisor.start_link/3`. It takes a topic, a channel, and an
   NSQ.Config struct, which has possible values defined and explained in
   nsq/config.ex.
 
-      {:ok, consumer} = NSQ.ConsumerSupervisor.start_link("my-topic", "my-channel", %NSQ.Config{
+      {:ok, consumer} = NSQ.Consumer.Supervisor.start_link("my-topic", "my-channel", %NSQ.Config{
         nsqlookupds: ["127.0.0.1:6751", "127.0.0.1:6761"],
         message_handler: fn(body, msg) ->
           # handle them message
@@ -192,7 +192,7 @@ defmodule NSQ.Consumer do
 
   @doc """
   The discovery loop calls this periodically to add/remove active nsqd
-  connections. Called from ConsumerSupervisor.
+  connections. Called from Consumer.Supervisor.
   """
   @spec handle_call(:discover_nsqds, {reference, pid}, cons_state) ::
     {:reply, :ok, cons_state}
@@ -341,7 +341,7 @@ defmodule NSQ.Consumer do
 
 
   @doc """
-  NSQ.ConsumerSupervisor.start_link returns the supervisor pid so that we can
+  NSQ.Consumer.Supervisor.start_link returns the supervisor pid so that we can
   effectively recover from consumer crashes. This function takes the supervisor
   pid and returns the consumer pid. We use this for public facing functions so
   that the end user can simply target the supervisor, e.g.

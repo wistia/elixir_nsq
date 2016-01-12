@@ -12,7 +12,7 @@ defmodule NSQ.Consumer.Connections do
 
 
   @doc """
-  Initialized from NSQ.ConsumerSupervisor, sends the consumer a message on a
+  Initialized from NSQ.Consumer.Supervisor, sends the consumer a message on a
   fixed interval.
   """
   @spec discovery_loop(pid) :: any
