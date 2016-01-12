@@ -62,7 +62,7 @@ handler throws an exception, it will automatically be requeued and delayed with
 a timeout based on attempts.
 
 ```elixir
-{:ok, consumer} = NSQ.ConsumerSupervisor.start_link("my-topic", "my-channel", %NSQ.Config{
+{:ok, consumer} = NSQ.Consumer.Supervisor.start_link("my-topic", "my-channel", %NSQ.Config{
   nsqlookupds: ["127.0.0.1:4160", "127.0.0.1:4161"],
   message_handler: fn(body, msg) ->
     IO.puts "id: #{msg.id}"
@@ -83,7 +83,7 @@ defmodule MyMsgHandler do
   end
 end
 
-{:ok, consumer} = NSQ.ConsumerSupervisor.start_link("my-topic", "my-channel", %NSQ.Config{
+{:ok, consumer} = NSQ.Consumer.Supervisor.start_link("my-topic", "my-channel", %NSQ.Config{
   nsqlookupds: ["127.0.0.1:4160", "127.0.0.1:4161"],
   message_handler: MyMsgHandler
 })
@@ -95,7 +95,7 @@ touch it so that NSQ doesn't automatically fail and requeue it.
 ```elixir
 def MyMsgHandler do
   def handle_message(body, msg) do
-    spawn_link fn ->
+    Task.start_link fn ->
       :timer.sleep(30_000)
       NSQ.Message.touch(msg)
     end
@@ -108,7 +108,7 @@ end
 If you're not using nsqlookupd, you can specify nsqds directly:
 
 ```elixir
-{:ok, consumer} = NSQ.ConsumerSupervisor.start_link("my-topic", "my-channel", %NSQ.Config{
+{:ok, consumer} = NSQ.Consumer.Supervisor.start_link("my-topic", "my-channel", %NSQ.Config{
   nsqds: ["127.0.0.1:4150", "127.0.0.1:4151"],
   message_handler: fn(body, msg) ->
     :ok
@@ -133,7 +133,7 @@ defmodule EventForwarder do
 end
 
 def setup_consumer do
-  {:ok, consumer} = NSQ.ConsumerSupervisor.start_link("my-topic", "my-channel", %NSQ.Config{
+  {:ok, consumer} = NSQ.Consumer.Supervisor.start_link("my-topic", "my-channel", %NSQ.Config{
     nsqds: ["127.0.0.1:4150", "127.0.0.1:4151"],
     message_handler: fn(body, msg) ->
       :ok
@@ -156,7 +156,6 @@ Potential event formats are:
 - `:backoff`
 - `:heartbeat`
 - `{:response, binary}`
-- `{:error, binary}`
 - `{:error, String.t, binary}`
 
 ### Supervision Tree
@@ -172,14 +171,14 @@ processes.
         ConnInfo Agent
         Connection.Supervisor
           Connection
-            Task.Supervisor
+            Message.Supervisor
               Message
               Message
           Connection
-            Task.Supervisor
+            Message.Supervisor
               Message
               Message
-      Discovery loop
+      Connection discovery loop
       RDY redistribution loop
 
     Producer Supervisor
