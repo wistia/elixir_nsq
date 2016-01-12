@@ -556,6 +556,7 @@ defmodule NSQ.Consumer do
           {:ok, new_state} = update_rdy(cons, conn, count, last_state)
           new_state
         end
+        GenEvent.notify(cons_state.event_manager_pid, :resume)
         {:ok, cons_state}
       backoff_counter > 0 ->
         backoff_duration = calculate_backoff(cons_state)
@@ -565,7 +566,9 @@ defmodule NSQ.Consumer do
           {:ok, new_state} = update_rdy(cons, conn, 0, last_state)
           new_state
         end
-        resume_from_backoff_later(cons, backoff_duration, cons_state)
+        {:ok, cons_state} = resume_from_backoff_later(cons, backoff_duration, cons_state)
+        GenEvent.notify(cons_state.event_manager_pid, backoff_signal)
+        {:ok, cons_state}
       true ->
         {:ok, cons_state}
     end
@@ -702,9 +705,7 @@ defmodule NSQ.Consumer do
       # In backoff mode, we only let `start_stop_continue_backoff/3` handle
       # this case.
       Logger.debug """
-        (#{inspect conn}) skip sending RDY \
-        in_backoff:#{cons_state.backoff_counter} || \
-        in_backoff_timeout:#{cons_state.backoff_duration}
+        (#{inspect conn}) skip sending RDY in_backoff:#{cons_state.backoff_counter} || in_backoff_timeout:#{cons_state.backoff_duration}
       """
       {:ok, cons_state}
     else
@@ -751,8 +752,8 @@ defmodule NSQ.Consumer do
 
     if max_possible_rdy <= 0 && new_rdy > 0 do
       if conn_info.rdy_count == 0 do
-        # Schedule update_rdy(consumer, conn, new_rdy) for this connection again
-        # in 5 seconds. This is to prevent eternal starvation.
+        # Schedule update_rdy(consumer, conn, new_rdy) for this connection
+        # again in 5 seconds. This is to prevent eternal starvation.
         {:ok, cons_state} = retry_rdy(cons, conn, new_rdy, cons_state)
       end
       {:ok, cons_state}
@@ -1006,8 +1007,7 @@ defmodule NSQ.Consumer do
       ms_since_last_msg = sec_since_last_msg * 1000
 
       Logger.debug(
-        "(#{inspect conn}) rdy: #{rdy_count} (last message received \
-        #{sec_since_last_msg} seconds ago)"
+        "(#{inspect conn}) rdy: #{rdy_count} (last message received #{sec_since_last_msg} seconds ago)"
       )
 
       is_idle = ms_since_last_msg > cons_state.config.low_rdy_idle_timeout

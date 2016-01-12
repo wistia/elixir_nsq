@@ -361,7 +361,6 @@ defmodule NSQ.ConsumerTest do
       # resume.
       message_handler: fn(_body, _msg) ->
         Agent.update(run_counter, fn(count) -> count + 1 end)
-        send(test_pid, :handled)
         if Agent.get(run_counter, fn(count) -> count end) < 3 do
           {:req, 1000, true}
         else
@@ -369,7 +368,10 @@ defmodule NSQ.ConsumerTest do
         end
       end
     })
-    :timer.sleep(200)
+
+    NSQ.Consumer.event_manager(sup_pid)
+      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self)
+
     consumer = Cons.get(sup_pid)
     cons_state = Cons.get_state(consumer)
     [conn1, conn2] = Cons.get_connections(cons_state)
@@ -385,12 +387,8 @@ defmodule NSQ.ConsumerTest do
     # Our message handler enters into backoff mode and requeues the message
     # 1 second from now.
     HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
-    receive do
-      :handled -> :ok
-    after
-      5100 -> raise "message took too long to run"
-    end
-    :timer.sleep(50)
+    assert_receive({:message_requeued, _}, 5100)
+    assert_receive(:backoff, 1000)
 
     # Assert that we're now in backoff mode.
     cons_state = Cons.get_state(consumer)
@@ -403,28 +401,24 @@ defmodule NSQ.ConsumerTest do
     # Wait ~200ms for resume to be called, which should put us in "test the
     # waters" mode. In this mode, one random connection has RDY set to 1. NSQD
     # will immediately follow up by sending the message we requeued again.
-    :timer.sleep(250)
+    :timer.sleep(200)
     cons_state = Cons.get_state(consumer)
     assert 1 == ConnInfo.fetch(cons_state, conn1, :rdy_count) +
       ConnInfo.fetch(cons_state, conn2, :rdy_count)
     assert 1 == ConnInfo.fetch(cons_state, conn1, :last_rdy) +
       ConnInfo.fetch(cons_state, conn2, :last_rdy)
     assert Cons.total_rdy_count(cons_state) == 1
-    receive do
-      :handled -> :ok
-    after
-      5100 -> raise "waited too long for retry to run"
-    end
+    assert_receive({:message_requeued, _}, 5100)
+    assert_receive(:backoff, 1000)
 
     # When the message handler fails again, we go back to backoff mode.
-    :timer.sleep(50)
     cons_state = Cons.get_state(consumer)
     [0, 0] = ConnInfo.fetch(cons_state, conn1, [:rdy_count, :last_rdy])
     [0, 0] = ConnInfo.fetch(cons_state, conn2, [:rdy_count, :last_rdy])
     assert Cons.total_rdy_count(cons_state) == 0
 
     # Then we'll go into "test the waters mode" again in 200ms.
-    :timer.sleep(250)
+    :timer.sleep(200)
     cons_state = Cons.get_state(consumer)
     assert 1 == ConnInfo.fetch(cons_state, conn1, :rdy_count) +
       ConnInfo.fetch(cons_state, conn2, :rdy_count)
@@ -435,19 +429,12 @@ defmodule NSQ.ConsumerTest do
     # After the message handler runs successfully, it decrements the
     # backoff_counter. We need one more successful message to decrement the
     # counter to 0 and leave backoff mode, so let's send one.
-    receive do
-      :handled -> :ok
-    after
-      5100 -> raise "waited too long for retry to run"
-    end
+    assert_receive({:message_finished, _}, 5100)
 
     # Send a successful message and leave backoff mode! (I hope!)
     HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
-    receive do
-      :handled -> :ok
-    after
-      5100 -> raise "waited too long for retry to run"
-    end
+    assert_receive({:message_finished, _}, 5100)
+    assert_receive(:resume, 5100)
     :timer.sleep(500)
     cons_state = Cons.get_state(consumer)
     [50, 50] = ConnInfo.fetch(cons_state, conn1, [:rdy_count, :last_rdy])
@@ -529,7 +516,6 @@ defmodule NSQ.ConsumerTest do
   end
 
   test "works with tls" do
-    Logger.configure(level: :debug)
     test_pid = self
     NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
