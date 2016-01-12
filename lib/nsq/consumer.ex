@@ -186,8 +186,7 @@ defmodule NSQ.Consumer do
   @spec handle_call(:redistribute_rdy, {reference, pid}, cons_state) ::
     {:reply, :ok, cons_state}
   def handle_call(:redistribute_rdy, _from, cons_state) do
-    {:ok, cons_state} = RDY.redistribute(self, cons_state)
-    {:reply, :ok, cons_state}
+    {:reply, :ok, RDY.redistribute!(self, cons_state)}
   end
 
 
@@ -208,8 +207,7 @@ defmodule NSQ.Consumer do
   @spec handle_call(:delete_dead_connections, {reference, pid}, cons_state) ::
     {:reply, :ok, cons_state}
   def handle_call(:delete_dead_connections, _from, cons_state) do
-    {:ok, cons_state} = Connections.delete_dead(cons_state)
-    {:reply, :ok, cons_state}
+    {:reply, :ok, Connections.delete_dead!(cons_state)}
   end
 
 
@@ -219,16 +217,14 @@ defmodule NSQ.Consumer do
   @spec handle_call({:start_stop_continue_backoff, atom}, {reference, pid}, cons_state) ::
     {:reply, :ok, cons_state}
   def handle_call({:start_stop_continue_backoff, backoff_flag}, _from, cons_state) do
-    {:ok, cons_state} = Backoff.start_stop_continue(self, backoff_flag, cons_state)
-    {:reply, :ok, cons_state}
+    {:reply, :ok, Backoff.start_stop_continue!(self, backoff_flag, cons_state)}
   end
 
 
   @spec handle_call({:update_rdy, connection, integer}, {reference, pid}, cons_state) ::
     {:reply, :ok, cons_state}
   def handle_call({:update_rdy, conn, count}, _from, cons_state) do
-    {:ok, cons_state} = RDY.update(self, conn, count, cons_state)
-    {:reply, :ok, cons_state}
+    {:reply, :ok, RDY.update!(self, conn, count, cons_state)}
   end
 
 
@@ -273,8 +269,7 @@ defmodule NSQ.Consumer do
   """
   @spec handle_call(:conn_info, any, cons_state) :: {:reply, map, cons_state}
   def handle_call(:conn_info, _from, state) do
-    info = ConnInfo.all(state.conn_info_pid)
-    {:reply, info, state}
+    {:reply, ConnInfo.all(state.conn_info_pid), state}
   end
 
 
@@ -283,8 +278,7 @@ defmodule NSQ.Consumer do
   """
   @spec handle_cast(:resume, cons_state) :: {:noreply, cons_state}
   def handle_cast(:resume, state) do
-    {:ok, cons_state} = Backoff.resume(self, state)
-    {:noreply, cons_state}
+    {:noreply, Backoff.resume!(self, state)}
   end
 
 
@@ -296,8 +290,7 @@ defmodule NSQ.Consumer do
     {:noreply, cons_state}
   def handle_cast({:maybe_update_rdy, {_host, _port} = nsqd}, cons_state) do
     conn = conn_from_nsqd(self, nsqd, cons_state)
-    {:ok, cons_state} = RDY.maybe_update(self, conn, cons_state)
-    {:noreply, cons_state}
+    {:noreply, RDY.maybe_update!(self, conn, cons_state)}
   end
 
 

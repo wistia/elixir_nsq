@@ -61,6 +61,11 @@ defmodule NSQ.Consumer.RDY do
     end
   end
 
+  def maybe_update!(cons, conn, cons_state) do
+    {:ok, cons_state} = maybe_update(cons, conn, cons_state)
+    cons_state
+  end
+
 
   @doc """
   Try to update RDY for a given connection, taking configuration and the
@@ -92,6 +97,11 @@ defmodule NSQ.Consumer.RDY do
     else
       {:ok, _cons_state} = transmit(conn, new_rdy, cons_state)
     end
+  end
+
+  def update!(cons, conn, new_rdy, cons_state) do
+    {:ok, cons_state} = update(cons, conn, new_rdy, cons_state)
+    cons_state
   end
 
 
@@ -173,6 +183,12 @@ defmodule NSQ.Consumer.RDY do
       {:ok, cons_state}
     end
   end
+
+  def redistribute!(cons, cons_state) do
+    {:ok, cons_state} = redistribute(cons, cons_state)
+    cons_state
+  end
+
 
   # Helper for redistribute; we set RDY to 1 for _some_ connections that
   # were halted, randomly, until there's no more RDY left to assign.

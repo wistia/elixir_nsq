@@ -53,6 +53,11 @@ defmodule NSQ.Consumer.Backoff do
     end
   end
 
+  def start_stop_continue!(cons, backoff_signal, cons_state) do
+    {:ok, cons_state} = start_stop_continue(cons, backoff_signal, cons_state)
+    cons_state
+  end
+
 
   @doc """
   This function is called asynchronously from `resume_later`. It
@@ -89,6 +94,11 @@ defmodule NSQ.Consumer.Backoff do
         {:ok, %{cons_state | backoff_duration: 0}}
       end
     end
+  end
+
+  def resume!(cons, cons_state) do
+    {:ok, cons_state} = resume(cons, cons_state)
+    cons_state
   end
 
 
