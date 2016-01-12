@@ -98,7 +98,7 @@ defmodule NSQ.Connection.Initializer do
       heartbeat_interval: config.heartbeat_interval,
       output_buffer: config.output_buffer_size,
       output_buffer_timeout: config.output_buffer_timeout,
-      tls_v1: true,
+      tls_v1: config.tls_v1,
       snappy: false,
       deflate: false,
       sample_rate: 0,
