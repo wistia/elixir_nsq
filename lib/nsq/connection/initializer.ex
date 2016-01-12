@@ -26,10 +26,12 @@ defmodule NSQ.Connection.Initializer do
 
       case Socket.TCP.connect(host, port, socket_opts) do
         {:ok, socket} ->
-          state = %{state | socket: socket}
-          {:ok, state} = do_handshake(state)
-          {:ok, state} = start_receiving_messages(state)
-          {:ok, reset_connects(state)}
+          state =
+            %{state | socket: socket}
+            |> do_handshake!
+            |> start_receiving_messages!
+            |> reset_connects
+          {:ok, state}
         {:error, reason} ->
           if length(state.config.nsqlookupds) > 0 do
             Logger.warn "(#{inspect self}) connect failed; #{reason}; discovery loop should respawn"
@@ -67,6 +69,10 @@ defmodule NSQ.Connection.Initializer do
     end
 
     {:ok, conn_state}
+  end
+  def do_handshake!(conn_state) do
+    {:ok, conn_state} = do_handshake(conn_state)
+    conn_state
   end
 
 
@@ -186,10 +192,6 @@ defmodule NSQ.Connection.Initializer do
   end
 
 
-  @spec reset_connects(C.state) :: C.state
-  defp reset_connects(state), do: %{state | connect_attempts: 0}
-
-
   @spec start_receiving_messages(C.state) :: {:ok, C.state}
   defp start_receiving_messages(%{socket: socket} = state) do
     reader_pid = spawn_link(
@@ -201,4 +203,12 @@ defmodule NSQ.Connection.Initializer do
     GenServer.cast(self, :flush_cmd_queue)
     {:ok, state}
   end
+  defp start_receiving_messages!(state) do
+    {:ok, state} = start_receiving_messages(state)
+    state
+  end
+
+
+  @spec reset_connects(C.state) :: C.state
+  defp reset_connects(state), do: %{state | connect_attempts: 0}
 end
