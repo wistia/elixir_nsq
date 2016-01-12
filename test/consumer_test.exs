@@ -350,6 +350,9 @@ defmodule NSQ.ConsumerTest do
     assert_receive_n_times(:handled, 1000, 2000)
   end
 
+  # NOTE: For this test, it's important that the requeue delay is a few hundred
+  # milliseconds higher than the backoff interval (200ms) so that we have a
+  # chance to measure the RDY count for each connection.
   test "when a message raises an exception, goes through the backoff process" do
     {:ok, run_counter} = Agent.start_link(fn -> 0 end)
     {:ok, sup_pid} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
@@ -362,10 +365,14 @@ defmodule NSQ.ConsumerTest do
       # resume.
       message_handler: fn(_body, _msg) ->
         Agent.update(run_counter, fn(count) -> count + 1 end)
-        if Agent.get(run_counter, fn(count) -> count end) < 3 do
-          {:req, 1000, true}
-        else
-          :ok
+        run_count = Agent.get(run_counter, fn(count) -> count end)
+        cond do
+          run_count == 1 ->
+            :ok
+          run_count < 4 ->
+            {:req, 500, true}
+          true ->
+            :ok
         end
       end
     })
@@ -385,10 +392,14 @@ defmodule NSQ.ConsumerTest do
     [1, 1] = ConnInfo.fetch(cons_state, conn1, [:rdy_count, :last_rdy])
     [1, 1] = ConnInfo.fetch(cons_state, conn2, [:rdy_count, :last_rdy])
 
-    # Our message handler enters into backoff mode and requeues the message
-    # 1 second from now.
+    # Send one successful message through so our subsequent timing is more
+    # predictable.
     HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
-    assert_receive({:message_requeued, _}, 5100)
+    assert_receive({:message_finished, _}, 5000)
+
+    # Our message handler enters into backoff mode and requeues the message.
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
+    assert_receive({:message_requeued, _}, 2000)
     assert_receive(:backoff, 1000)
 
     # Assert that we're now in backoff mode.
@@ -399,9 +410,9 @@ defmodule NSQ.ConsumerTest do
     [0, 0] = ConnInfo.fetch(cons_state, conn2, [:rdy_count, :last_rdy])
     assert H.total_rdy_count(cons_state) == 0
 
-    # Wait ~200ms for resume to be called, which should put us in "test the
-    # waters" mode. In this mode, one random connection has RDY set to 1. NSQD
-    # will immediately follow up by sending the message we requeued again.
+    # Wait ~200ms for "test the waters" mode. In this mode, one random
+    # connection has RDY set to 1. NSQD will immediately follow up by sending
+    # the message we requeued again.
     :timer.sleep(250)
     cons_state = Cons.get_state(consumer)
     assert 1 == ConnInfo.fetch(cons_state, conn1, :rdy_count) +
@@ -409,8 +420,8 @@ defmodule NSQ.ConsumerTest do
     assert 1 == ConnInfo.fetch(cons_state, conn1, :last_rdy) +
       ConnInfo.fetch(cons_state, conn2, :last_rdy)
     assert H.total_rdy_count(cons_state) == 1
-    assert_receive({:message_requeued, _}, 5100)
-    assert_receive(:backoff, 1000)
+    assert_receive({:message_requeued, _}, 5000)
+    assert_receive(:backoff, 100)
 
     # When the message handler fails again, we go back to backoff mode.
     cons_state = Cons.get_state(consumer)
@@ -430,13 +441,12 @@ defmodule NSQ.ConsumerTest do
     # After the message handler runs successfully, it decrements the
     # backoff_counter. We need one more successful message to decrement the
     # counter to 0 and leave backoff mode, so let's send one.
-    assert_receive({:message_finished, _}, 5100)
+    assert_receive({:message_finished, _}, 2000)
 
     # Send a successful message and leave backoff mode! (I hope!)
     HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
-    assert_receive({:message_finished, _}, 5100)
-    assert_receive(:resume, 5100)
-    :timer.sleep(500)
+    assert_receive({:message_finished, _}, 2000)
+    assert_receive(:resume, 100)
     cons_state = Cons.get_state(consumer)
     [50, 50] = ConnInfo.fetch(cons_state, conn1, [:rdy_count, :last_rdy])
     [50, 50] = ConnInfo.fetch(cons_state, conn2, [:rdy_count, :last_rdy])

@@ -51,9 +51,7 @@ defmodule NSQ.Consumer.Backoff do
       if cons_state.stop_flag do
         {:ok, %{cons_state | backoff_duration: 0}}
       else
-        conn_count = Connections.count(cons_state)
-
-        if conn_count == 0 do
+        if Connections.count(cons_state) == 0 do
           # This could happen if nsqlookupd suddenly stops discovering
           # connections. Maybe a network partition?
           Logger.warn("no connection available to resume")
@@ -88,14 +86,20 @@ defmodule NSQ.Consumer.Backoff do
       new_state
     end
     GenEvent.notify(cons_state.event_manager_pid, backoff_signal)
-    {:ok, cons_state} = resume_later(cons, backoff_duration, cons_state)
+    {:ok, _cons_state} = resume_later(cons, backoff_duration, cons_state)
   end
 
 
   defp update_backoff_counter(cons_state, backoff_signal) do
+    backoff_counter_was = cons_state.backoff_counter
+
     {backoff_updated, backoff_counter} = cond do
       backoff_signal == :resume ->
-        {true, cons_state.backoff_counter - 1}
+        if cons_state.backoff_counter <= 0 do
+          {false, cons_state.backoff_counter}
+        else
+          {true, cons_state.backoff_counter - 1}
+        end
       backoff_signal == :backoff ->
         {true, cons_state.backoff_counter + 1}
       true ->
