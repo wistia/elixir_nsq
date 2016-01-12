@@ -91,8 +91,6 @@ defmodule NSQ.Consumer.Backoff do
 
 
   defp update_backoff_counter(cons_state, backoff_signal) do
-    backoff_counter_was = cons_state.backoff_counter
-
     {backoff_updated, backoff_counter} = cond do
       backoff_signal == :resume ->
         if cons_state.backoff_counter <= 0 do
