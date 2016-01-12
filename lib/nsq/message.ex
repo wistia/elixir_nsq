@@ -68,8 +68,8 @@ defmodule NSQ.Message do
     # Kick off processing in a separate process, so we can kill it if it takes
     # too long.
     parent = self
-    pid = spawn_link fn ->
-      NSQ.Message.process_without_timeout(parent, message)
+    {:ok, pid} = Task.start_link fn ->
+      process_without_timeout(parent, message)
     end
     message = %{message | processing_pid: pid}
 
@@ -81,18 +81,6 @@ defmodule NSQ.Message do
     result = {:message_done, message, ret_val}
     send(message.connection, result)
     result
-  end
-
-
-  def process_without_timeout(parent, message) do
-    ret_val =
-      if should_fail_message?(message) do
-        :fail |> respond_to_nsq(message)
-      else
-        run_handler_safely(message) |> respond_to_nsq(message)
-      end
-
-    send parent, {:message_done, message, ret_val}
   end
 
 
@@ -151,6 +139,18 @@ defmodule NSQ.Message do
   # ------------------------------------------------------- #
   # Private Functions                                       #
   # ------------------------------------------------------- #
+  defp process_without_timeout(parent, message) do
+    ret_val =
+      if should_fail_message?(message) do
+        :fail |> respond_to_nsq(message)
+      else
+        run_handler_safely(message) |> respond_to_nsq(message)
+      end
+
+    send parent, {:message_done, message, ret_val}
+  end
+
+
   defp should_fail_message?(message) do
     message.config.max_attempts > 0 &&
       message.attempts > message.config.max_attempts

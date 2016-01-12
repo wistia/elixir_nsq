@@ -208,7 +208,9 @@ defmodule NSQ.Connection do
   end
 
   @doc """
-  Calls the command but doesn't expect any response.
+  Calls the command but doesn't expect any response. This is important if the
+  NSQ command does not in fact generate a response. If you use `cmd` and a
+  response is sent, it will live forever in the command queue.
   """
   @spec cmd_noresponse(pid, tuple) :: {:ok, reference} | {:queued, :nosocket}
   def cmd_noresponse(conn, cmd) do
@@ -231,11 +233,12 @@ defmodule NSQ.Connection do
     end
   end
 
+
   @spec wait_for_zero_in_flight_with_timeout(pid, binary, integer) :: any
   defp wait_for_zero_in_flight_with_timeout(agent_pid, conn_id, timeout) do
     try do
       Task.async(fn -> wait_for_zero_in_flight(agent_pid, conn_id) end)
-        |> Task.await(timeout)
+      |> Task.await(timeout)
     catch
       :timeout, _ -> :timeout
     end
