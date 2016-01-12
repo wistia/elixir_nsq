@@ -239,6 +239,17 @@ defmodule NSQ.Consumer do
   end
 
 
+  def handle_call(:starved, _from, cons_state) do
+    is_starved =
+      ConnInfo.all(cons_state.conn_info_pid)
+      |> Enum.any?(fn({conn_id, info}) ->
+        info.messages_in_flight > 0 &&
+          info.messages_in_flight >= info.last_rdy * 0.85
+      end)
+    {:reply, is_starved, cons_state}
+  end
+
+
   @doc """
   Called from `NSQ.Consumer.change_max_in_flight(consumer, max_in_flight)`. Not
   for external use.
@@ -298,6 +309,12 @@ defmodule NSQ.Consumer do
   # ------------------------------------------------------- #
   # API Definitions                                         #
   # ------------------------------------------------------- #
+  def starved?(sup_pid) do
+    cons = get(sup_pid)
+    GenServer.call(cons, :starved)
+  end
+
+
   def close(sup_pid) do
     cons = get(sup_pid)
     GenServer.call(cons, :close)

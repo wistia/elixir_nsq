@@ -32,7 +32,7 @@ See these resources for more info on building client libraries:
 - [x] Delegates
 - [x] Test Message TOUCH
 - [x] Remove Connection dependency
-- [ ] Implement `NSQ.Consumer.starved?/1`
+- [x] Implement `NSQ.Consumer.starved?/1`
 
 ## Publish Messages
 

@@ -570,4 +570,37 @@ defmodule NSQ.ConsumerTest do
       refute_receive(:handled, 2000)
     end
   end
+
+  test "starved" do
+    {:ok, consumer} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+      nsqds: [{"127.0.0.1", 6750}],
+      max_in_flight: 2,
+      message_handler: fn(_, _) ->
+        :timer.sleep(1000)
+        :ok
+      end
+    })
+
+    NSQ.Consumer.event_manager(consumer)
+      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self)
+
+    # Nothing is in flight, not starved
+    assert NSQ.Consumer.starved?(consumer) == false
+
+    # One message in flight, 50% of last_rdy, not starved
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
+    assert_receive({:message, _}, 2000)
+    assert NSQ.Consumer.starved?(consumer) == false
+
+    # Two messages in flight, 100% of last_rdy, __starved__
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
+    assert_receive({:message, _}, 2000)
+    assert NSQ.Consumer.starved?(consumer) == true
+
+    # Messages are done, back to 0 in flight, not starved
+    assert_receive({:message_finished, _}, 2000)
+    assert_receive({:message_finished, _}, 2000)
+    :timer.sleep 100
+    assert NSQ.Consumer.starved?(consumer) == false
+  end
 end
