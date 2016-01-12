@@ -6,6 +6,7 @@ defmodule NSQ.Message do
   import NSQ.Protocol
   use GenServer
 
+
   # ------------------------------------------------------- #
   # Struct Definition                                       #
   # ------------------------------------------------------- #
@@ -23,9 +24,13 @@ defmodule NSQ.Message do
     :msg_timeout,
   ]
 
+  # ------------------------------------------------------- #
+  # Behaviour Implementation                                #
+  # ------------------------------------------------------- #
   def start_link(message, opts \\ []) do
     {:ok, _pid} = GenServer.start_link(__MODULE__, message, opts)
   end
+
 
   def init(message) do
     # Process the message asynchronously after init.
@@ -33,10 +38,14 @@ defmodule NSQ.Message do
     {:ok, message}
   end
 
+
   def handle_cast(:process, message) do
+    # `process/1` will send the return value to `message.connection` as part of
+    # its standard procedure.
     process(message)
     {:noreply, message}
   end
+
 
   # ------------------------------------------------------- #
   # API Definitions                                         #
@@ -49,6 +58,7 @@ defmodule NSQ.Message do
     {:ok, message} = decode_as_message(data)
     Map.merge(%NSQ.Message{}, message)
   end
+
 
   @doc """
   This is the main entry point when processing a message. It starts the message
@@ -73,38 +83,18 @@ defmodule NSQ.Message do
     result
   end
 
+
   def process_without_timeout(parent, message) do
     ret_val =
       if should_fail_message?(message) do
-        log_failed_message(message)
-        fin(message)
-        :fail
+        :fail |> respond_to_nsq(message)
       else
-        result =
-          try do
-            run_handler(message.config.message_handler, message)
-          rescue
-            e ->
-              Logger.error "Error running message handler: #{inspect e}"
-              {:req, -1, true}
-          end
-
-        case result do
-          :ok -> fin(message)
-          :fail -> fin(message)
-          :req -> req(message)
-          {:req, delay} -> req(message, delay)
-          {:req, delay, backoff} -> req(message, delay, backoff)
-          _ ->
-            Logger.error "Unexpected handler result #{inspect result}, requeueing message #{message.id}"
-            req(message)
-        end
-
-        result
+        run_handler_safely(message) |> respond_to_nsq(message)
       end
 
     send parent, {:message_done, message, ret_val}
   end
+
 
   @doc """
   Tells NSQD that we're done processing this message. This is called
@@ -117,6 +107,7 @@ defmodule NSQ.Message do
     GenEvent.notify(message.event_manager_pid, {:message_finished, message})
     GenServer.call(message.consumer, {:start_stop_continue_backoff, :resume})
   end
+
 
   @doc """
   Tells NSQD to requeue the message, with delay and backoff. According to the
@@ -145,6 +136,7 @@ defmodule NSQ.Message do
     GenEvent.notify(message.event_manager_pid, {:message_requeued, message})
   end
 
+
   @doc """
   This function is intended to be used by the handler for long-running
   functions. They can set up a separate process that periodically touches the
@@ -155,20 +147,15 @@ defmodule NSQ.Message do
     message.socket |> Socket.Stream.send!(encode({:touch, message.id}))
   end
 
+
   # ------------------------------------------------------- #
   # Private Functions                                       #
   # ------------------------------------------------------- #
-  # This runs in a separate process kicked off via the :process call. When it
-  # finishes, it will also kill the message GenServer.
   defp should_fail_message?(message) do
     message.config.max_attempts > 0 &&
       message.attempts > message.config.max_attempts
   end
 
-  # TODO: Custom error logging/handling?
-  defp log_failed_message(message) do
-    Logger.warn("msg #{message.id} attempted #{message.attempts} times, giving up")
-  end
 
   # Handler can be either an anonymous function or a module that implements the
   # `handle_message\2` function.
@@ -179,6 +166,35 @@ defmodule NSQ.Message do
       handler.handle_message(message.body, message)
     end
   end
+
+
+  defp run_handler_safely(message) do
+    try do
+      run_handler(message.config.message_handler, message)
+    rescue
+      e ->
+        Logger.error "Error running message handler: #{inspect e}"
+        {:req, -1, true}
+    end
+  end
+
+
+  defp respond_to_nsq(ret_val, message) do
+    case ret_val do
+      :ok -> fin(message)
+      :fail ->
+        Logger.warn("msg #{message.id} attempted #{message.attempts} times, giving up")
+        fin(message)
+      :req -> req(message)
+      {:req, delay} -> req(message, delay)
+      {:req, delay, backoff} -> req(message, delay, backoff)
+      _ ->
+        Logger.error "Unexpected handler result #{inspect ret_val}, requeueing message #{message.id}"
+        req(message)
+    end
+    ret_val
+  end
+
 
   # We expect our function will send us a message when it's done. Block until
   # that happens. If it takes too long, requeue the message and cancel
@@ -208,6 +224,7 @@ defmodule NSQ.Message do
     Process.unlink(pid)
     Process.exit(pid, :normal)
   end
+
 
   defp calculate_delay(attempts, max_requeue_delay) do
     exponential_backoff = :math.pow(2, attempts) * 1000
