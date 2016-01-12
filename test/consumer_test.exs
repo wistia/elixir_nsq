@@ -13,6 +13,7 @@ defmodule NSQ.ConsumerTest do
   alias NSQ.Consumer, as: Cons
   alias NSQ.Consumer.Helpers, as: H
   alias HTTPotion, as: HTTP
+  alias NSQ.Consumer.Connections
   alias NSQ.Connection, as: Conn
   alias NSQ.ConnInfo
   require Logger
@@ -204,7 +205,7 @@ defmodule NSQ.ConsumerTest do
 
     # Abruptly close the connection
     cons = Cons.get(cons_sup_pid)
-    [conn1] = Cons.get_connections(cons)
+    [conn1] = Connections.get(cons)
     conn_state = Conn.get_state(conn1)
 
     Logger.warn "Closing socket as part of test..."
@@ -215,12 +216,12 @@ defmodule NSQ.ConsumerTest do
     # actually dead. So we clear dead connections manually here.
     :timer.sleep(100)
     GenServer.call(cons, :delete_dead_connections)
-    assert length(Cons.get_connections(cons)) == 0
+    assert length(Connections.get(cons)) == 0
 
     # Wait for the new connection to come up. It should be different from the
     # old one.
     :timer.sleep(600)
-    [conn2] = Cons.get_connections(cons)
+    [conn2] = Connections.get(cons)
     assert conn1 != conn2
 
     # Send another message so we can verify the new connection is working.
@@ -298,7 +299,7 @@ defmodule NSQ.ConsumerTest do
         :ok
       end
     })
-    [conn] = NSQ.Consumer.get_connections(NSQ.Consumer.get(consumer))
+    [conn] = Connections.get(NSQ.Consumer.get(consumer))
     conn_state = NSQ.Connection.get_state(conn)
     assert conn_state.connect_attempts == 1
     :timer.sleep(700)
@@ -374,7 +375,7 @@ defmodule NSQ.ConsumerTest do
 
     consumer = Cons.get(sup_pid)
     cons_state = Cons.get_state(consumer)
-    [conn1, conn2] = Cons.get_connections(cons_state)
+    [conn1, conn2] = Connections.get(cons_state)
 
     # We start off with RDY=1 for each connection. It would get naturally
     # bumped when it runs maybe_update_rdy after processing the first message.
@@ -458,7 +459,7 @@ defmodule NSQ.ConsumerTest do
       end
     })
     cons = Cons.get(cons_sup_pid)
-    [conn] = Cons.get_connections(cons)
+    [conn] = Connections.get(cons)
 
     HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
     refute_receive :handled, 500
@@ -490,7 +491,7 @@ defmodule NSQ.ConsumerTest do
     })
     cons = Cons.get(cons_sup_pid)
     cons_state = Cons.get_state(cons)
-    [conn1, conn2] = Cons.get_connections(cons)
+    [conn1, conn2] = Connections.get(cons)
     assert H.total_rdy_count(cons_state) == 1
     assert 1 == ConnInfo.fetch(cons_state, conn1, :rdy_count) +
       ConnInfo.fetch(cons_state, conn2, :rdy_count)

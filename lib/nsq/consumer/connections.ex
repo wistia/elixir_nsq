@@ -185,7 +185,7 @@ defmodule NSQ.Consumer.Connections do
   """
   @spec dead_connections([C.host_with_port], pid, C.state) :: [C.connection]
   def dead_connections(discovered_nsqds, cons, cons_state) do
-    Enum.reject C.get_connections(cons_state), fn(conn) ->
+    Enum.reject get(cons_state), fn(conn) ->
       conn_already_discovered?(cons, conn, discovered_nsqds)
     end
   end
@@ -225,7 +225,7 @@ defmodule NSQ.Consumer.Connections do
   """
   @spec delete_dead(C.state) :: {:ok, C.state}
   def delete_dead(state) do
-    Enum.map C.get_connections(state), fn({conn_id, pid}) ->
+    Enum.map get(state), fn({conn_id, pid}) ->
       unless Process.alive?(pid) do
         Supervisor.delete_child(state.conn_sup_pid, conn_id)
       end
@@ -235,7 +235,7 @@ defmodule NSQ.Consumer.Connections do
 
 
   def reconnect_failed(state) do
-    Enum.map C.get_connections(state), fn({_, pid}) ->
+    Enum.map get(state), fn({_, pid}) ->
       if Process.alive?(pid), do: GenServer.cast(pid, :reconnect)
     end
     {:ok, state}
@@ -254,6 +254,30 @@ defmodule NSQ.Consumer.Connections do
   end
 
 
+  @doc """
+  Returns all live connections for a consumer. This function, which takes
+  a consumer's entire state as an argument, is for convenience. Not for
+  external use.
+  """
+  @spec get(C.state) :: [C.connection]
+  def get(%{conn_sup_pid: conn_sup_pid}) do
+    children = Supervisor.which_children(conn_sup_pid)
+    Enum.map children, fn({child_id, pid, _, _}) -> {child_id, pid} end
+  end
+
+
+  @doc """
+  Returns all live connections for a consumer. Used in tests. Not for external
+  use.
+  """
+  @spec get(pid, C.state) :: [C.connection]
+  def get(cons, cons_state \\ nil) when is_pid(cons) do
+    cons_state = cons_state || C.get_state(cons)
+    children = Supervisor.which_children(cons_state.conn_sup_pid)
+    Enum.map children, fn({child_id, pid, _, _}) -> {child_id, pid} end
+  end
+
+
   @spec conn_already_discovered?(pid, C.connection, [C.host_with_port]) :: boolean
   defp conn_already_discovered?(cons, {conn_id, _}, discovered_nsqds) do
     Enum.any? discovered_nsqds, fn(nsqd) ->
@@ -265,7 +289,7 @@ defmodule NSQ.Consumer.Connections do
   @spec nsqd_already_has_connection?(C.host_with_port, pid, C.state) :: boolean
   defp nsqd_already_has_connection?(nsqd, cons, cons_state) do
     needle = ConnInfo.conn_id(cons, nsqd)
-    Enum.any? C.get_connections(cons_state), fn({conn_id, _}) ->
+    Enum.any? get(cons_state), fn({conn_id, _}) ->
       conn_id == needle
     end
   end

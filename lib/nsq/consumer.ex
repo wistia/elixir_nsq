@@ -246,7 +246,7 @@ defmodule NSQ.Consumer do
 
   def handle_call(:close, _, cons_state) do
     Logger.info "Closing consumer #{inspect self}"
-    connections = get_connections(cons_state)
+    connections = Connections.get(cons_state)
     Task.start_link fn ->
       Enum.map connections, fn({_, conn_pid}) ->
         Task.start_link(NSQ.Connection, :close, [conn_pid])
@@ -297,29 +297,6 @@ defmodule NSQ.Consumer do
   # ------------------------------------------------------- #
   # API Definitions                                         #
   # ------------------------------------------------------- #
-  @doc """
-  Returns all live connections for a consumer. This function, which takes
-  a consumer's entire state as an argument, is for convenience. Not for
-  external use.
-  """
-  @spec get_connections(cons_state) :: [connection]
-  def get_connections(%{conn_sup_pid: conn_sup_pid}) do
-    children = Supervisor.which_children(conn_sup_pid)
-    Enum.map children, fn({child_id, pid, _, _}) -> {child_id, pid} end
-  end
-
-  @doc """
-  Returns all live connections for a consumer. Used in tests. Not for external
-  use.
-  """
-  @spec get_connections(pid, cons_state) :: [connection]
-  def get_connections(cons, cons_state \\ nil) when is_pid(cons) do
-    cons_state = cons_state || get_state(cons)
-    children = Supervisor.which_children(cons_state.conn_sup_pid)
-    Enum.map children, fn({child_id, pid, _, _}) -> {child_id, pid} end
-  end
-
-
   @doc """
   Initialized from NSQ.ConsumerSupervisor, sends the consumer a message on a
   fixed interval.

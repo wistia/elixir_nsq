@@ -51,7 +51,7 @@ defmodule NSQ.Consumer.Helpers do
   @spec conn_from_nsqd(pid, C.host_with_port, C.state) :: C.connection
   def conn_from_nsqd(cons, nsqd, cons_state) do
     needle = ConnInfo.conn_id(cons, nsqd)
-    Enum.find C.get_connections(cons_state), fn({conn_id, _}) ->
+    Enum.find Connections.get(cons_state), fn({conn_id, _}) ->
       needle == conn_id
     end
   end

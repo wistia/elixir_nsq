@@ -32,7 +32,7 @@ defmodule NSQ.Consumer.Backoff do
       backoff_counter == 0 && backoff_updated ->
         count = per_conn_max_in_flight(cons_state)
         Logger.warn "exiting backoff, returning all to RDY #{count}"
-        cons_state = Enum.reduce C.get_connections(cons_state), cons_state, fn(conn, last_state) ->
+        cons_state = Enum.reduce Connections.get(cons_state), cons_state, fn(conn, last_state) ->
           {:ok, new_state} = RDY.update(cons, conn, count, last_state)
           new_state
         end
@@ -42,7 +42,7 @@ defmodule NSQ.Consumer.Backoff do
         backoff_duration = calculate_backoff(cons_state)
         Logger.warn "backing off for #{backoff_duration / 1000} seconds (backoff level #{backoff_counter}), setting all to RDY 0"
         # send RDY 0 immediately (to *all* connections)
-        cons_state = Enum.reduce C.get_connections(cons_state), cons_state, fn(conn, last_state) ->
+        cons_state = Enum.reduce Connections.get(cons_state), cons_state, fn(conn, last_state) ->
           {:ok, new_state} = RDY.update(cons, conn, 0, last_state)
           new_state
         end
@@ -113,9 +113,9 @@ defmodule NSQ.Consumer.Backoff do
       # nsqd. In this mode, instead of a random connection, always use the
       # first one that was defined, which ends up being the last one in our
       # list.
-      cons_state |> C.get_connections |> List.last
+      cons_state |> Connections.get |> List.last
     else
-      cons_state |> C.get_connections |> Enum.random
+      cons_state |> Connections.get |> Enum.random
     end
   end
 

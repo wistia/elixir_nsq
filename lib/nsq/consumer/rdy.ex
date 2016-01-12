@@ -127,7 +127,7 @@ defmodule NSQ.Consumer.RDY do
   @spec redistribute(pid, C.state) :: {:ok, C.state}
   def redistribute(cons, cons_state) do
     if should_redistribute?(cons_state) do
-      conns = C.get_connections(cons_state)
+      conns = Connections.get(cons_state)
       conn_count = length(conns)
 
       if conn_count > cons_state.max_in_flight do
@@ -219,7 +219,7 @@ defmodule NSQ.Consumer.RDY do
 
   @spec give_up_for_idle_connections(pid, C.state) :: [C.connection]
   defp give_up_for_idle_connections(cons, cons_state) do
-    conns = C.get_connections(cons_state)
+    conns = Connections.get(cons_state)
     Enum.map conns, fn(conn) ->
       conn_id = ConnInfo.conn_id(conn)
       [last_msg_t, rdy_count] = ConnInfo.fetch(
