@@ -175,9 +175,8 @@ defmodule NSQ.Consumer.RDY do
       available_max_in_flight = get_available_max_in_flight(cons_state)
 
       # Distribute it!
-      distribute_randomly(
-        cons, conns, available_max_in_flight, cons_state
-      )
+      {sorted_conns, cons_state} = sort_conns_for_round_robin(conns, cons_state)
+      distribute(cons, sorted_conns, available_max_in_flight, cons_state)
     else
       # Nothing to do. This is the usual path!
       {:ok, cons_state}
@@ -191,20 +190,47 @@ defmodule NSQ.Consumer.RDY do
 
 
   # Helper for redistribute; we set RDY to 1 for _some_ connections that
-  # were halted, randomly, until there's no more RDY left to assign.
-  @spec distribute_randomly(pid, [C.connection], integer, C.state) ::
+  # were halted, until there's no more RDY left to assign. We assume that the
+  # list of connections has already been sorted in the order that we should
+  # distribute.
+  @spec distribute(pid, [C.connection], integer, C.state) ::
     {:ok, C.state}
-  defp distribute_randomly(cons, possible_conns, available_max_in_flight, cons_state) do
+  defp distribute(cons, possible_conns, available_max_in_flight, cons_state) do
     if length(possible_conns) == 0 || available_max_in_flight <= 0 do
       {:ok, cons_state}
     else
-      [conn|rest] = Enum.shuffle(possible_conns)
+      [conn|rest] = possible_conns
       Logger.debug("(#{inspect conn}) redistributing RDY")
       {:ok, cons_state} = update(cons, conn, 1, cons_state)
-      distribute_randomly(
-        cons, rest, available_max_in_flight - 1, cons_state
-      )
+      distribute(cons, rest, available_max_in_flight - 1, cons_state)
     end
+  end
+
+
+  @spec sort_conns_for_round_robin([C.connection], C.state) :: {[C.connection], C.state}
+  defp sort_conns_for_round_robin(conns, cons_state) do
+    # We sort to ensure consistency of start_index across runs.
+    sorted_conns = conns |> Enum.sort_by(fn({conn_id, _}) -> conn_id end)
+    start_index = rem(cons_state.distribution_counter, length(sorted_conns))
+
+    # We want to start distributing from a specific index. This reorders the
+    # list of connections so that the target index becomes first, followed by
+    # elements in their natural sorted order. Once we hit the end of the list,
+    # it wraps back to the beginning, still in order.
+    sorted_conns =
+      sorted_conns
+      |> Enum.split(start_index)
+      |> Tuple.to_list
+      |> Enum.reverse
+      |> Enum.concat
+
+    # By increasing distribution count, we ensure that the start_index will be
+    # different next time this runs. If the number of connections does not
+    # change, we will shift the distribution by 1 with each run.
+    {
+      sorted_conns,
+      %{cons_state | distribution_counter: cons_state.distribution_counter + 1}
+    }
   end
 
 

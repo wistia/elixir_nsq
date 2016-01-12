@@ -103,7 +103,8 @@ defmodule NSQ.Consumer do
     need_rdy_redistributed: false,
     stop_flag: false,
     backoff_counter: 0,
-    backoff_duration: 0
+    backoff_duration: 0,
+    distribution_counter: 0,
   }
 
 

@@ -481,7 +481,7 @@ defmodule NSQ.ConsumerTest do
     test_pid = self
     {:ok, cons_sup_pid} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}, {"127.0.0.1", 6760}],
-      rdy_redistribute_interval: 500,
+      rdy_redistribute_interval: 100,
       low_rdy_idle_timeout: 1000,
       max_in_flight: 1,
       message_handler: fn(_body, _msg) ->
@@ -499,7 +499,7 @@ defmodule NSQ.ConsumerTest do
 
     IO.puts "Letting RDY redistribute 10 times..."
     {conn1_rdy, conn2_rdy} = Enum.reduce 1..10, {0, 0}, fn(i, {rdy1, rdy2}) ->
-      :timer.sleep(1000)
+      :timer.sleep(100)
       result = {
         rdy1 + ConnInfo.fetch(cons_state, conn1, :rdy_count),
         rdy2 + ConnInfo.fetch(cons_state, conn2, :rdy_count)
@@ -509,11 +509,8 @@ defmodule NSQ.ConsumerTest do
     end
 
     IO.puts "Distribution: #{conn1_rdy} : #{conn2_rdy}"
-    rdy_distributed_count = conn1_rdy + conn2_rdy
-    assert conn1_rdy > 0
-    assert conn2_rdy > 0
-    assert rdy_distributed_count >= 10 && rdy_distributed_count <= 12
-    assert abs(conn1_rdy - conn2_rdy) < 8
+    assert conn1_rdy == 5
+    assert conn2_rdy == 5
   end
 
   test "works with tls" do
