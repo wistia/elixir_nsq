@@ -17,37 +17,14 @@ defmodule NSQ.Consumer.Backoff do
   """
   @spec start_stop_continue(pid, atom, C.state) :: {:ok, C.state}
   def start_stop_continue(cons, backoff_signal, cons_state) do
-    {backoff_updated, backoff_counter} = cond do
-      backoff_signal == :resume ->
-        {true, cons_state.backoff_counter - 1}
-      backoff_signal == :backoff ->
-        {true, cons_state.backoff_counter + 1}
-      true ->
-        {false, cons_state.backoff_counter}
-    end
-    cons_state = %{cons_state | backoff_counter: backoff_counter}
+    {backoff_updated, cons_state} =
+      cons_state |> update_backoff_counter(backoff_signal)
 
     cond do
-      backoff_counter == 0 && backoff_updated ->
-        count = per_conn_max_in_flight(cons_state)
-        Logger.warn "exiting backoff, returning all to RDY #{count}"
-        cons_state = Enum.reduce Connections.get(cons_state), cons_state, fn(conn, last_state) ->
-          {:ok, new_state} = RDY.update(cons, conn, count, last_state)
-          new_state
-        end
-        GenEvent.notify(cons_state.event_manager_pid, :resume)
-        {:ok, cons_state}
-      backoff_counter > 0 ->
-        backoff_duration = calculate_backoff(cons_state)
-        Logger.warn "backing off for #{backoff_duration / 1000} seconds (backoff level #{backoff_counter}), setting all to RDY 0"
-        # send RDY 0 immediately (to *all* connections)
-        cons_state = Enum.reduce Connections.get(cons_state), cons_state, fn(conn, last_state) ->
-          {:ok, new_state} = RDY.update(cons, conn, 0, last_state)
-          new_state
-        end
-        {:ok, cons_state} = resume_later(cons, backoff_duration, cons_state)
-        GenEvent.notify(cons_state.event_manager_pid, backoff_signal)
-        {:ok, cons_state}
+      cons_state.backoff_counter == 0 && backoff_updated ->
+        {:ok, _state} = exit_backoff(cons, cons_state)
+      cons_state.backoff_counter > 0 ->
+        {:ok, _state} = backoff(cons, cons_state, backoff_signal)
       true ->
         {:ok, cons_state}
     end
@@ -99,6 +76,46 @@ defmodule NSQ.Consumer.Backoff do
   def resume!(cons, cons_state) do
     {:ok, cons_state} = resume(cons, cons_state)
     cons_state
+  end
+
+
+  defp backoff(cons, cons_state, backoff_signal) do
+    backoff_duration = calculate_backoff(cons_state)
+    Logger.warn "backing off for #{backoff_duration / 1000} seconds (backoff level #{cons_state.backoff_counter}), setting all to RDY 0"
+    # send RDY 0 immediately (to *all* connections)
+    cons_state = Enum.reduce Connections.get(cons_state), cons_state, fn(conn, last_state) ->
+      {:ok, new_state} = RDY.update(cons, conn, 0, last_state)
+      new_state
+    end
+    GenEvent.notify(cons_state.event_manager_pid, backoff_signal)
+    {:ok, cons_state} = resume_later(cons, backoff_duration, cons_state)
+  end
+
+
+  defp update_backoff_counter(cons_state, backoff_signal) do
+    {backoff_updated, backoff_counter} = cond do
+      backoff_signal == :resume ->
+        {true, cons_state.backoff_counter - 1}
+      backoff_signal == :backoff ->
+        {true, cons_state.backoff_counter + 1}
+      true ->
+        {false, cons_state.backoff_counter}
+    end
+    cons_state = %{cons_state | backoff_counter: backoff_counter}
+
+    {backoff_updated, cons_state}
+  end
+
+
+  defp exit_backoff(cons, cons_state) do
+    count = per_conn_max_in_flight(cons_state)
+    Logger.warn "exiting backoff, returning all to RDY #{count}"
+    cons_state = Enum.reduce Connections.get(cons_state), cons_state, fn(conn, last_state) ->
+      {:ok, new_state} = RDY.update(cons, conn, count, last_state)
+      new_state
+    end
+    GenEvent.notify(cons_state.event_manager_pid, :resume)
+    {:ok, cons_state}
   end
 
 

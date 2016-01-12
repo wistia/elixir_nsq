@@ -207,6 +207,7 @@ defmodule NSQ.Consumer.RDY do
     end
   end
 
+
   @spec cancel_outstanding_retry(C.state, C.connection) :: any
   defp cancel_outstanding_retry(cons_state, conn) do
     conn_info = ConnInfo.fetch(cons_state, ConnInfo.conn_id(conn))
