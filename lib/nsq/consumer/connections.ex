@@ -11,6 +11,25 @@ defmodule NSQ.Consumer.Connections do
   alias NSQ.Consumer.RDY
 
 
+  @doc """
+  Initialized from NSQ.ConsumerSupervisor, sends the consumer a message on a
+  fixed interval.
+  """
+  @spec discovery_loop(pid) :: any
+  def discovery_loop(cons) do
+    cons_state = C.get_state(cons)
+    %NSQ.Config{
+      lookupd_poll_interval: poll_interval,
+      lookupd_poll_jitter: poll_jitter
+    } = cons_state.config
+    delay = poll_interval + round(poll_interval * poll_jitter * :random.uniform)
+    :timer.sleep(delay)
+
+    GenServer.call(cons, :discover_nsqds)
+    discovery_loop(cons)
+  end
+
+
   def refresh(cons_state) do
     {:ok, cons_state} = delete_dead(cons_state)
     {:ok, cons_state} = reconnect_failed(cons_state)

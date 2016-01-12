@@ -5,7 +5,6 @@ defmodule NSQ.Consumer.Backoff do
 
 
   require Logger
-  alias NSQ.ConnInfo
   alias NSQ.Consumer, as: C
   alias NSQ.Consumer.Connections
   alias NSQ.Consumer.RDY

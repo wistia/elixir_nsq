@@ -74,6 +74,7 @@ defmodule NSQ.Consumer do
   it can fully rebalance.
   """
 
+
   # ------------------------------------------------------- #
   # Directives                                              #
   # ------------------------------------------------------- #
@@ -85,6 +86,7 @@ defmodule NSQ.Consumer do
   alias NSQ.Consumer.Connections
   alias NSQ.Consumer.RDY
   alias NSQ.ConnInfo, as: ConnInfo
+
 
   # ------------------------------------------------------- #
   # Module Attributes                                       #
@@ -103,6 +105,7 @@ defmodule NSQ.Consumer do
     backoff_counter: 0,
     backoff_duration: 0
   }
+
 
   # ------------------------------------------------------- #
   # Type Definitions                                        #
@@ -125,6 +128,7 @@ defmodule NSQ.Consumer do
   @type cons_state :: %{conn_sup_pid: pid, config: NSQ.Config.t, conn_info_pid: pid}
   @type state :: %{conn_sup_pid: pid, config: NSQ.Config.t, conn_info_pid: pid}
 
+
   # ------------------------------------------------------- #
   # Behaviour Implementation                                #
   # ------------------------------------------------------- #
@@ -146,6 +150,7 @@ defmodule NSQ.Consumer do
     }
     GenServer.start_link(__MODULE__, state, opts)
   end
+
 
   @doc """
   On init, we create a connection for each NSQD instance discovered, and set
@@ -173,6 +178,7 @@ defmodule NSQ.Consumer do
     {:ok, _cons_state} = Connections.discover_nsqds_and_connect(self, cons_state)
   end
 
+
   @doc """
   The RDY loop periodically calls this to make sure RDY is balanced among our
   connections.
@@ -184,6 +190,7 @@ defmodule NSQ.Consumer do
     {:reply, :ok, cons_state}
   end
 
+
   @doc """
   The discovery loop calls this periodically to add/remove active nsqd
   connections. Called from ConsumerSupervisor.
@@ -193,6 +200,7 @@ defmodule NSQ.Consumer do
   def handle_call(:discover_nsqds, _from, cons_state) do
     {:reply, :ok, Connections.refresh!(cons_state)}
   end
+
 
   @doc """
   Only used for specs.
@@ -204,6 +212,7 @@ defmodule NSQ.Consumer do
     {:reply, :ok, cons_state}
   end
 
+
   @doc """
   Called from `NSQ.Message.fin/1`. Not for external use.
   """
@@ -214,15 +223,14 @@ defmodule NSQ.Consumer do
     {:reply, :ok, cons_state}
   end
 
-  @doc """
-  Called from `retry_rdy/4`. Not for external use.
-  """
+
   @spec handle_call({:update_rdy, connection, integer}, {reference, pid}, cons_state) ::
     {:reply, :ok, cons_state}
   def handle_call({:update_rdy, conn, count}, _from, cons_state) do
     {:ok, cons_state} = RDY.update(self, conn, count, cons_state)
     {:reply, :ok, cons_state}
   end
+
 
   @doc """
   Called from tests to assert correct consumer state. Not for external use.
@@ -232,6 +240,7 @@ defmodule NSQ.Consumer do
   def handle_call(:state, _from, state) do
     {:reply, state, state}
   end
+
 
   @doc """
   Called from `NSQ.Consumer.change_max_in_flight(consumer, max_in_flight)`. Not
@@ -244,6 +253,7 @@ defmodule NSQ.Consumer do
     {:reply, :ok, state}
   end
 
+
   def handle_call(:close, _, cons_state) do
     Logger.info "Closing consumer #{inspect self}"
     connections = Connections.get(cons_state)
@@ -255,6 +265,7 @@ defmodule NSQ.Consumer do
     {:reply, :ok, %{cons_state | stop_flag: true}}
   end
 
+
   @doc """
   Called from NSQ.Consume.event_manager.
   """
@@ -263,6 +274,7 @@ defmodule NSQ.Consumer do
   def handle_call(:event_manager, _from, state) do
     {:reply, state.event_manager_pid, state}
   end
+
 
   @doc """
   Called to observe all connection stats. For debugging or reporting purposes.
@@ -273,6 +285,7 @@ defmodule NSQ.Consumer do
     {:reply, info, state}
   end
 
+
   @doc """
   Called from `Backoff.resume_later/3`. Not for external use.
   """
@@ -281,6 +294,7 @@ defmodule NSQ.Consumer do
     {:ok, cons_state} = Backoff.resume(self, state)
     {:noreply, cons_state}
   end
+
 
   @doc """
   Called from `NSQ.Connection.handle_cast({:nsq_msg, _}, _)` after each message
@@ -294,44 +308,15 @@ defmodule NSQ.Consumer do
     {:noreply, cons_state}
   end
 
+
   # ------------------------------------------------------- #
   # API Definitions                                         #
   # ------------------------------------------------------- #
-  @doc """
-  Initialized from NSQ.ConsumerSupervisor, sends the consumer a message on a
-  fixed interval.
-  """
-  @spec rdy_loop(pid) :: any
-  def rdy_loop(cons) do
-    cons_state = get_state(cons)
-    GenServer.call(cons, :redistribute_rdy)
-    delay = cons_state.config.rdy_redistribute_interval
-    :timer.sleep(delay)
-    rdy_loop(cons)
-  end
-
-  @doc """
-  Initialized from NSQ.ConsumerSupervisor, sends the consumer a message on a
-  fixed interval.
-  """
-  @spec rdy_loop(pid) :: any
-  def discovery_loop(cons) do
-    cons_state = get_state(cons)
-    %NSQ.Config{
-      lookupd_poll_interval: poll_interval,
-      lookupd_poll_jitter: poll_jitter
-    } = cons_state.config
-    delay = poll_interval + round(poll_interval * poll_jitter * :random.uniform)
-    :timer.sleep(delay)
-
-    GenServer.call(cons, :discover_nsqds)
-    discovery_loop(cons)
-  end
-
   def close(sup_pid) do
     cons = get(sup_pid)
     GenServer.call(cons, :close)
   end
+
 
   @doc """
   Called from tests to assert correct consumer state. Not for external use.
@@ -352,6 +337,7 @@ defmodule NSQ.Consumer do
     GenServer.call(cons, {:max_in_flight, new_max_in_flight})
   end
 
+
   @doc """
   If the event manager is not defined in NSQ.Config, it will be generated. So
   if you want to attach event handlers on the fly, you can use a syntax like
@@ -367,6 +353,7 @@ defmodule NSQ.Consumer do
     cons = get(sup_pid)
     GenServer.call(cons, :conn_info)
   end
+
 
   @doc """
   NSQ.ConsumerSupervisor.start_link returns the supervisor pid so that we can

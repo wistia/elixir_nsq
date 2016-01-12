@@ -13,6 +13,20 @@ defmodule NSQ.Consumer.RDY do
 
 
   @doc """
+  Initialized from NSQ.ConsumerSupervisor, sends the consumer a message on a
+  fixed interval.
+  """
+  @spec redistribute_loop(pid) :: any
+  def redistribute_loop(cons) do
+    cons_state = C.get_state(cons)
+    GenServer.call(cons, :redistribute_rdy)
+    delay = cons_state.config.rdy_redistribute_interval
+    :timer.sleep(delay)
+    redistribute_loop(cons)
+  end
+
+
+  @doc """
   If we're not in backoff mode and we've hit a "trigger point" to update RDY,
   then go ahead and update RDY. Not for external use.
   """
