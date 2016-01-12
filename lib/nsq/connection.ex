@@ -82,7 +82,7 @@ defmodule NSQ.Connection do
 
   @spec init(state) :: {:ok, state}
   def init(conn_state) do
-    {:ok, msg_sup_pid} = NSQ.MessageSupervisor.start_link
+    {:ok, msg_sup_pid} = NSQ.Message.Supervisor.start_link
     conn_state = %{conn_state | msg_sup_pid: msg_sup_pid}
     conn_state |> ConnInfo.init
     case conn_state |> Initializer.connect do

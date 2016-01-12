@@ -128,7 +128,7 @@ defmodule NSQ.Connection.MessageHandling do
     }
     GenEvent.notify(state.event_manager_pid, {:message, message})
     GenServer.cast(state.parent, {:maybe_update_rdy, state.nsqd})
-    NSQ.MessageSupervisor.start_child(state.msg_sup_pid, message)
+    NSQ.Message.Supervisor.start_child(state.msg_sup_pid, message)
     {:ok, state}
   end
 
