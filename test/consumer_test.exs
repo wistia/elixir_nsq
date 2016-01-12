@@ -349,7 +349,6 @@ defmodule NSQ.ConsumerTest do
   end
 
   test "when a message raises an exception, goes through the backoff process" do
-    test_pid = self
     {:ok, run_counter} = Agent.start_link(fn -> 0 end)
     {:ok, sup_pid} = NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       backoff_strategy: :test, # fixed 200ms for testing
