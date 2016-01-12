@@ -3,11 +3,11 @@ defmodule NSQ.Connection do
   Sets up a TCP connection to NSQD. Both consumers and producers use this.
   """
 
+
   # ------------------------------------------------------- #
   # Directives                                              #
   # ------------------------------------------------------- #
   require Logger
-  import NSQ.Protocol
   alias NSQ.Connection.Command
   alias NSQ.Connection.Initializer
   alias NSQ.Connection.MessageHandling
@@ -32,8 +32,8 @@ defmodule NSQ.Connection do
   A map, but we can be more specific by asserting some entries that should be
   set for a connection's state map.
   """
-  @type conn_state :: %{parent: pid, socket: pid, config: NSQ.Config.t, nsqd: host_with_port}
   @type state :: %{parent: pid, socket: pid, config: NSQ.Config.t, nsqd: host_with_port}
+
 
   # ------------------------------------------------------- #
   # Module Attributes                                       #
@@ -60,84 +60,9 @@ defmodule NSQ.Connection do
     msg_timeout: nil
   }
 
+
   # ------------------------------------------------------- #
   # Behaviour Implementation                                #
-  # ------------------------------------------------------- #
-  @spec init(map) :: {:ok, conn_state}
-  def init(conn_state) do
-    {:ok, msg_sup_pid} = NSQ.MessageSupervisor.start_link
-    conn_state = %{conn_state | msg_sup_pid: msg_sup_pid}
-    init_conn_info(conn_state)
-    connect_result = Initializer.connect(conn_state)
-    case connect_result do
-      {:ok, state} -> {:ok, state}
-      {{:error, _reason}, state} -> {:ok, state}
-    end
-  end
-
-  def terminate(_reason, _state) do
-    :ok
-  end
-
-  @spec handle_call({:cmd, tuple, atom}, {pid, reference}, conn_state) ::
-    {:reply, {:ok, reference}, conn_state} |
-    {:reply, {:queued, :nosocket}, conn_state}
-  def handle_call({:cmd, cmd, kind}, {_, ref} = from, state) do
-    if state.socket do
-      state = Command.send_data_and_queue_resp(state, cmd, from, kind)
-      state = Command.update_state_from_cmd(cmd, state)
-      {:reply, {:ok, ref}, state}
-    else
-      # Not connected currently; add this call onto a queue to be run as soon
-      # as we reconnect.
-      state = %{state | cmd_queue: :queue.in({cmd, from, kind}, state.cmd_queue)}
-      {:reply, {:queued, :no_socket}, state}
-    end
-  end
-
-  @spec handle_call(:stop, {pid, reference}, conn_state) ::
-    {:stop, :normal, conn_state}
-  def handle_call(:stop, _from, state) do
-    {:stop, :normal, state}
-  end
-
-  @spec handle_call(:state, {pid, reference}, conn_state) ::
-    {:reply, conn_state, conn_state}
-  def handle_call(:state, _from, state) do
-    {:reply, state, state}
-  end
-
-  @spec handle_cast({:nsq_msg, binary}, T.conn_state) :: {:noreply, T.conn_state}
-  def handle_cast({:nsq_msg, msg}, state) do
-    {:ok, state} = MessageHandling.handle_nsq_message(msg, state)
-    {:noreply, state}
-  end
-
-  @spec handle_cast(:flush_cmd_queue, conn_state) :: {:noreply, conn_state}
-  def handle_cast(:flush_cmd_queue, state) do
-    {:noreply, Command.flush_cmd_queue(state)}
-  end
-
-  @spec handle_cast(:reconnect, conn_state) :: {:noreply, conn_state}
-  def handle_cast(:reconnect, conn_state) do
-    if conn_state.connect_attempts > 0 do
-      {_, conn_state} = Initializer.connect(conn_state)
-    end
-    {:noreply, conn_state}
-  end
-
-  # When a task is done, it automatically messages the return value to the
-  # calling process. we can use that opportunity to update the messages in
-  # flight.
-  @spec handle_info({reference, {:message_done, NSQ.Message.t, any}}, T.conn_state) ::
-    {:noreply, T.conn_state}
-  def handle_info({:message_done, _msg, ret_val}, state) do
-    state |> MessageHandling.update_conn_stats_on_message_done(ret_val)
-    {:noreply, state}
-  end
-
-  # ------------------------------------------------------- #
-  # API Definitions                                         #
   # ------------------------------------------------------- #
   @spec start_link(pid, host_with_port, NSQ.Config.t, String.t, String.t, pid, list) ::
     {:ok, pid}
@@ -154,17 +79,94 @@ defmodule NSQ.Connection do
     {:ok, _pid} = GenServer.start_link(__MODULE__, state, opts)
   end
 
-  @spec get_state(pid) :: {:ok, conn_state}
+
+  @spec init(state) :: {:ok, state}
+  def init(conn_state) do
+    {:ok, msg_sup_pid} = NSQ.MessageSupervisor.start_link
+    conn_state = %{conn_state | msg_sup_pid: msg_sup_pid}
+    init_conn_info(conn_state)
+    connect_result = Initializer.connect(conn_state)
+    case connect_result do
+      {:ok, state} -> {:ok, state}
+      {{:error, _reason}, state} -> {:ok, state}
+    end
+  end
+
+
+  def terminate(_reason, _state) do
+    :ok
+  end
+
+
+  @spec handle_call({:cmd, tuple, atom}, {pid, reference}, state) ::
+    {:reply, {:ok, reference}, state} |
+    {:reply, {:queued, :nosocket}, state}
+  def handle_call({:cmd, cmd, kind}, from, state) do
+    {reply, state} = state |> Command.exec(cmd, kind, from)
+    {:reply, reply, state}
+  end
+
+
+  @spec handle_call(:stop, {pid, reference}, state) :: {:stop, :normal, state}
+  def handle_call(:stop, _from, state) do
+    {:stop, :normal, state}
+  end
+
+
+  @spec handle_call(:state, {pid, reference}, state) :: {:reply, state, state}
+  def handle_call(:state, _from, state) do
+    {:reply, state, state}
+  end
+
+
+  @spec handle_cast({:nsq_msg, binary}, state) :: {:noreply, state}
+  def handle_cast({:nsq_msg, msg}, state) do
+    {:ok, state} = MessageHandling.handle_nsq_message(msg, state)
+    {:noreply, state}
+  end
+
+
+  @spec handle_cast(:flush_cmd_queue, state) :: {:noreply, state}
+  def handle_cast(:flush_cmd_queue, state) do
+    {:noreply, Command.flush_cmd_queue!(state)}
+  end
+
+
+  @spec handle_cast(:reconnect, state) :: {:noreply, state}
+  def handle_cast(:reconnect, conn_state) do
+    if conn_state.connect_attempts > 0 do
+      {_, conn_state} = Initializer.connect(conn_state)
+    end
+    {:noreply, conn_state}
+  end
+
+
+  # When a task is done, it automatically messages the return value to the
+  # calling process. we can use that opportunity to update the messages in
+  # flight.
+  @spec handle_info({reference, {:message_done, NSQ.Message.t, any}}, state) ::
+    {:noreply, T.conn_state}
+  def handle_info({:message_done, _msg, ret_val}, state) do
+    state |> MessageHandling.update_conn_stats_on_message_done(ret_val)
+    {:noreply, state}
+  end
+
+
+  # ------------------------------------------------------- #
+  # API Definitions                                         #
+  # ------------------------------------------------------- #
+  @spec get_state(pid) :: {:ok, state}
   def get_state(pid) when is_pid(pid) do
     GenServer.call(pid, :state)
   end
 
-  @spec get_state(connection) :: {:ok, conn_state}
+  @spec get_state(connection) :: {:ok, state}
   def get_state({_conn_id, pid} = _connection) do
     get_state(pid)
   end
 
-  @spec close(pid, conn_state) :: any
+
+  @spec close(pid, state) :: any
   def close(conn, conn_state \\ nil) do
     Logger.debug "Closing connection #{inspect conn}"
     conn_state = conn_state || get_state(conn)
@@ -192,7 +194,7 @@ defmodule NSQ.Connection do
 
   @doc """
   Calls the command and waits for a response. If a command shouldn't have a
-  response, use cmd_noreply.
+  response, use cmd_noresponse.
   """
   @spec cmd(pid, tuple, integer) :: {:ok, binary} | {:error, String.t}
   def cmd(conn_pid, cmd, timeout \\ 5000) do
@@ -207,17 +209,9 @@ defmodule NSQ.Connection do
   end
 
   @doc """
-  Calls the command but doesn't generate a reply back to the caller.
-  """
-  @spec cmd_noreply(pid, tuple) :: {:ok, reference} | {:queued, :nosocket}
-  def cmd_noreply(conn_pid, cmd) do
-    GenServer.call(conn_pid, {:cmd, cmd, :noreply})
-  end
-
-  @doc """
   Calls the command but doesn't expect any response.
   """
-  @spec cmd_noreply(pid, tuple) :: {:ok, reference} | {:queued, :nosocket}
+  @spec cmd_noresponse(pid, tuple) :: {:ok, reference} | {:queued, :nosocket}
   def cmd_noresponse(conn, cmd) do
     GenServer.call(conn, {:cmd, cmd, :noresponse})
   end
@@ -232,7 +226,7 @@ defmodule NSQ.Connection do
     1_000_000 * megasec + sec + microsec / 1_000_000
   end
 
-  @spec init_conn_info(conn_state) :: any
+  @spec init_conn_info(state) :: any
   defp init_conn_info(state) do
     ConnInfo.update state, %{
       max_rdy: state.max_rdy,

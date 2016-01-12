@@ -11,6 +11,20 @@ defmodule NSQ.Connection.Command do
   import NSQ.Protocol
 
 
+  def exec(state, cmd, kind, {_, ref} = from) do
+    if state.socket do
+      state = send_data_and_queue_resp(state, cmd, from, kind)
+      state = update_state_from_cmd(cmd, state)
+      {{:ok, ref}, state}
+    else
+      # Not connected currently; add this call onto a queue to be run as soon
+      # as we reconnect.
+      state = %{state | cmd_queue: :queue.in({cmd, from, kind}, state.cmd_queue)}
+      {{:queued, :no_socket}, state}
+    end
+  end
+
+
   @spec send_data_and_queue_resp(S.state, tuple, {reference, pid}, atom) :: C.state
   def send_data_and_queue_resp(state, cmd, from, kind) do
     state.socket |> Socket.Stream.send!(encode(cmd))
@@ -31,9 +45,15 @@ defmodule NSQ.Connection.Command do
         state = send_data_and_queue_resp(state, cmd, from, kind)
         flush_cmd_queue(%{state | cmd_queue: new_queue})
       :empty ->
-        %{state | cmd_queue: new_queue}
+        {:ok, %{state | cmd_queue: new_queue}}
     end
   end
+
+  def flush_cmd_queue!(state) do
+    {:ok, state} = flush_cmd_queue(state)
+    state
+  end
+
 
   @spec update_state_from_cmd(tuple, C.state) :: C.state
   def update_state_from_cmd(cmd, state) do
