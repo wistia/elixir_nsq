@@ -5,9 +5,9 @@ defmodule NSQ.Producer do
 
   ## Interface
 
-  To initialize a producer, use `new/2`.
+  To initialize:
 
-      {:ok, producer} = NSQ.Producer.new("the-default-topic", %NSQ.Config{
+      {:ok, producer} = NSQ.Producer.Supervisor.start_link("the-default-topic", %NSQ.Config{
         nsqds: ["127.0.0.1:6750"]
       })
 
@@ -47,6 +47,7 @@ defmodule NSQ.Producer do
   import NSQ.Protocol
   use GenServer
 
+
   # ------------------------------------------------------- #
   # Module Attributes                                       #
   # ------------------------------------------------------- #
@@ -58,6 +59,7 @@ defmodule NSQ.Producer do
     config: nil,
     conn_info_pid: nil
   }
+
 
   # ------------------------------------------------------- #
   # Type Definitions                                        #
@@ -79,6 +81,7 @@ defmodule NSQ.Producer do
   """
   @type pro_state :: %{conn_sup_pid: pid, config: NSQ.Config.t}
 
+
   # ------------------------------------------------------- #
   # Behaviour Implementation                                #
   # ------------------------------------------------------- #
@@ -90,15 +93,18 @@ defmodule NSQ.Producer do
     {:ok, conn_info_pid} = Agent.start_link(fn -> %{} end)
     pro_state = %{pro_state | conn_info_pid: conn_info_pid}
 
-    if pro_state.config.event_manager do
-      manager = pro_state.config.event_manager
-    else
-      {:ok, manager} = GenEvent.start_link
-    end
+    manager =
+      if pro_state.config.event_manager do
+        pro_state.config.event_manager
+      else
+        {:ok, manager} = GenEvent.start_link
+        manager
+      end
     pro_state = %{pro_state | event_manager_pid: manager}
 
     {:ok, _pro_state} = connect_to_nsqds(pro_state.config.nsqds, self, pro_state)
   end
+
 
   @spec handle_call({:pub, binary}, any, pro_state) ::
     {:reply, {:ok, binary}, pro_state}
@@ -106,11 +112,13 @@ defmodule NSQ.Producer do
     do_pub(pro_state.topic, data, pro_state)
   end
 
+
   @spec handle_call({:pub, binary, binary}, any, pro_state) ::
     {:reply, {:ok, binary}, pro_state}
   def handle_call({:pub, topic, data}, _from, pro_state) do
     do_pub(topic, data, pro_state)
   end
+
 
   @spec handle_call({:mpub, binary}, any, pro_state) ::
     {:reply, {:ok, binary}, pro_state}
@@ -118,16 +126,19 @@ defmodule NSQ.Producer do
     do_mpub(pro_state.topic, data, pro_state)
   end
 
+
   @spec handle_call({:mpub, binary, binary}, any, pro_state) ::
     {:reply, {:ok, binary}, pro_state}
   def handle_call({:mpub, topic, data}, _from, pro_state) do
     do_mpub(topic, data, pro_state)
   end
 
+
   @spec handle_call(:state, any, pro_state) :: {:reply, pro_state, pro_state}
   def handle_call(:state, _from, state) do
     {:reply, state, state}
   end
+
 
   # ------------------------------------------------------- #
   # API Definitions                                         #
@@ -141,11 +152,13 @@ defmodule NSQ.Producer do
     GenServer.start_link(__MODULE__, state)
   end
 
+
   @spec get_connections(pro_state) :: [connection]
   def get_connections(pro_state) when is_map(pro_state) do
     children = Supervisor.which_children(pro_state.conn_sup_pid)
     Enum.map children, fn({child_id, pid, _, _}) -> {child_id, pid} end
   end
+
 
   @spec get_connections(pid, pro_state) :: [connection]
   def get_connections(pro, pro_state \\ nil) when is_pid(pro) do
@@ -153,11 +166,13 @@ defmodule NSQ.Producer do
     get_connections(pro_state)
   end
 
+
   @spec random_connection_pid(pro_state) :: pid
   def random_connection_pid(pro_state) do
     {_child_id, pid} = Enum.random(get_connections(pro_state))
     pid
   end
+
 
   @doc """
   Create supervised connections to NSQD.
@@ -172,6 +187,7 @@ defmodule NSQ.Producer do
     {:ok, pro_state}
   end
 
+
   @doc """
   Get the current state of a producer. Used in tests. Not for external use.
   """
@@ -179,6 +195,7 @@ defmodule NSQ.Producer do
   def get_state(producer) do
     GenServer.call(producer, :state)
   end
+
 
   @doc """
   Publish data to whatever topic is the default.
@@ -188,6 +205,7 @@ defmodule NSQ.Producer do
     {:ok, _resp} = GenServer.call(get(sup_pid), {:pub, data})
   end
 
+
   @doc """
   Publish data to a specific topic.
   """
@@ -195,6 +213,7 @@ defmodule NSQ.Producer do
   def pub(sup_pid, topic, data) do
     {:ok, _resp} = GenServer.call(get(sup_pid), {:pub, topic, data})
   end
+
 
   @doc """
   Publish data to whatever topic is the default.
@@ -204,6 +223,7 @@ defmodule NSQ.Producer do
     GenServer.call(get(sup_pid), {:mpub, data})
   end
 
+
   @doc """
   Publish data to a specific topic.
   """
@@ -211,6 +231,7 @@ defmodule NSQ.Producer do
   def mpub(sup_pid, topic, data) do
     {:ok, _resp} = GenServer.call(get(sup_pid), {:mpub, topic, data})
   end
+
 
   @doc """
   The end-user will be targeting the supervisor, but it's the producer that
@@ -224,10 +245,10 @@ defmodule NSQ.Producer do
     pid
   end
 
+
   # ------------------------------------------------------- #
   # Private Functions                                       #
   # ------------------------------------------------------- #
-
   # Used to DRY up handle_call({:pub, ...).
   @spec do_pub(binary, binary, pro_state) :: {:reply, {:ok, binary}, pro_state}
   defp do_pub(topic, data, pro_state) do
@@ -235,6 +256,7 @@ defmodule NSQ.Producer do
       |> NSQ.Connection.cmd({:pub, topic, data})
     {:reply, {:ok, resp}, pro_state}
   end
+
 
   # Used to DRY up handle_call({:mpub, ...).
   @spec do_mpub(binary, binary, pro_state) :: {:reply, {:ok, binary}, pro_state}
