@@ -531,7 +531,7 @@ defmodule NSQ.ConsumerTest do
       tls_insecure_skip_verify: true,
       tls_cert: "#{__DIR__}/ssl_keys/elixir_nsq.crt",
       tls_key: "#{__DIR__}/ssl_keys/elixir_nsq.key",
-      tls_min_version: :"tlsv1.2",
+      tls_min_version: :tlsv1,
       max_reconnect_attempts: 0,
       message_handler: fn(body, msg) ->
         assert body == "HTTP message"
@@ -546,5 +546,26 @@ defmodule NSQ.ConsumerTest do
 
     HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
     assert_receive(:handled, 2000)
+  end
+
+  test "fails when tls_insecure_skip_verify is false" do
+    test_pid = self
+    NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+      nsqds: [{"127.0.0.1", 6750}],
+      tls_v1: true,
+      tls_insecure_skip_verify: false,
+      tls_cert: "#{__DIR__}/ssl_keys/elixir_nsq.crt",
+      tls_key: "#{__DIR__}/ssl_keys/elixir_nsq.key",
+      max_reconnect_attempts: 0,
+      message_handler: fn(body, msg) ->
+        assert body == "HTTP message"
+        assert msg.attempts == 1
+        send(test_pid, :handled)
+        :ok
+      end
+    })
+
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
+    refute_receive(:handled, 2000)
   end
 end

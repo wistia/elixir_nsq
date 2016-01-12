@@ -18,10 +18,6 @@ defmodule NSQ.Connection.Initializer do
       socket_opts = @socket_opts |> Keyword.merge(
         send_timeout: state.config.write_timeout,
         timeout: state.config.dial_timeout,
-        cert: [path: state.config.tls_cert],
-        key: [path: state.config.tls_key],
-        versions: ssl_versions(state.config.tls_min_version),
-        verify: false,
       )
 
       case Socket.TCP.connect(host, port, socket_opts) do
@@ -129,12 +125,26 @@ defmodule NSQ.Connection.Initializer do
     end
 
     if parsed["tls_v1"] == true do
-      socket = Socket.SSL.connect!(conn_state.socket)
+      socket = Socket.SSL.connect! conn_state.socket, [
+        cacertfile: conn_state.config.tls_cert,
+        keyfile: conn_state.config.tls_key,
+        versions: ssl_versions(conn_state.config.tls_min_version),
+        verify: ssl_verify_atom(conn_state.config),
+      ]
       conn_state = %{conn_state | socket: socket}
       socket |> wait_for_ok(conn_state.config.read_timeout)
     end
 
     {:ok, conn_state}
+  end
+
+
+  defp ssl_verify_atom(config) do
+    if config.tls_insecure_skip_verify == true do
+      :verify_none
+    else
+      :verify_peer
+    end
   end
 
 
