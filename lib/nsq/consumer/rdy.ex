@@ -106,7 +106,7 @@ defmodule NSQ.Consumer.RDY do
 
 
   @doc """
-  Delay for a configured interval, then call RDY.update. Not for external use.
+  Delay for a configured interval, then call RDY.update.
   """
   @spec retry(pid, C.connection, integer, C.state) :: {:ok, C.state}
   def retry(cons, conn, count, cons_state) do
@@ -146,7 +146,7 @@ defmodule NSQ.Consumer.RDY do
   This will only be triggered in odd cases where we're in backoff or when there
   are more connections than max in flight. It will randomly change RDY on
   some connections to 0 and 1 so that they're all guaranteed to eventually
-  process messages. Not for external use.
+  process messages.
   """
   @spec redistribute(pid, C.state) :: {:ok, C.state}
   def redistribute(cons, cons_state) do
@@ -168,7 +168,10 @@ defmodule NSQ.Consumer.RDY do
       end
 
       # Free up any connections that are RDY but not processing messages.
-      give_up_for_idle_connections(cons, cons_state)
+      Connections.idle_with_rdy(cons_state) |> Enum.map(fn(conn) ->
+        Logger.debug("(#{inspect conn}) idle connection, giving up RDY")
+        {:ok, _cons_state} = update(cons, conn, 0, cons_state)
+      end)
 
       # Determine how much RDY we can distribute. This needs to happen before
       # we give up RDY, or max_in_flight will end up equalling RDY.
@@ -271,32 +274,6 @@ defmodule NSQ.Consumer.RDY do
         || (in_backoff && conn_count > 1)
         || cons_state.need_rdy_redistributed
       )
-  end
-
-
-  @spec give_up_for_idle_connections(pid, C.state) :: [C.connection]
-  defp give_up_for_idle_connections(cons, cons_state) do
-    conns = Connections.get(cons_state)
-    Enum.map conns, fn(conn) ->
-      conn_id = ConnInfo.conn_id(conn)
-      [last_msg_t, rdy_count] = ConnInfo.fetch(
-        cons_state, conn_id, [:last_msg_timestamp, :rdy_count]
-      )
-      sec_since_last_msg = now - last_msg_t
-      ms_since_last_msg = sec_since_last_msg * 1000
-
-      Logger.debug(
-        "(#{inspect conn}) rdy: #{rdy_count} (last message received #{sec_since_last_msg} seconds ago)"
-      )
-
-      is_idle = ms_since_last_msg > cons_state.config.low_rdy_idle_timeout
-      if rdy_count > 0 && is_idle do
-        Logger.debug("(#{inspect conn}) idle connection, giving up RDY")
-        {:ok, _cons_state} = update(cons, conn, 0, cons_state)
-      end
-
-      conn
-    end
   end
 
 

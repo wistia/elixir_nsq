@@ -317,6 +317,26 @@ defmodule NSQ.Consumer.Connections do
   end
 
 
+  @spec idle_with_rdy(C.state) :: [C.connection]
+  def idle_with_rdy(cons_state) do
+    conns = get(cons_state)
+    Enum.filter conns, fn(conn) ->
+      conn_id = ConnInfo.conn_id(conn)
+      [last_msg_t, rdy_count] = ConnInfo.fetch(
+        cons_state, conn_id, [:last_msg_timestamp, :rdy_count]
+      )
+      sec_since_last_msg = now - last_msg_t
+      ms_since_last_msg = sec_since_last_msg * 1000
+
+      Logger.debug(
+        "(#{inspect conn}) rdy: #{rdy_count} (last message received #{sec_since_last_msg} seconds ago)"
+      )
+
+      ms_since_last_msg > cons_state.config.low_rdy_idle_timeout && rdy_count > 0
+    end
+  end
+
+
   @spec conn_already_discovered?(pid, C.connection, [C.host_with_port]) :: boolean
   defp conn_already_discovered?(cons, {conn_id, _}, discovered_nsqds) do
     Enum.any? discovered_nsqds, fn(nsqd) ->
