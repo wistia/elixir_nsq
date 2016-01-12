@@ -24,7 +24,7 @@ defmodule NSQ.Connection do
 
   @typedoc """
   A tuple with a string ID (used to target the connection in
-  NSQ.ConnectionSupervisor) and a PID of the connection.
+  NSQ.Connection.Supervisor) and a PID of the connection.
   """
   @type connection :: {String.t, pid}
 

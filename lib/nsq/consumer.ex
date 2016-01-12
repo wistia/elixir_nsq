@@ -110,7 +110,7 @@ defmodule NSQ.Consumer do
 
   @typedoc """
   A tuple with a string ID (used to target the connection in
-  NSQ.ConnectionSupervisor) and a PID of the connection.
+  NSQ.Connection.Supervisor) and a PID of the connection.
   """
   @type connection :: {String.t, pid}
 
@@ -148,17 +148,19 @@ defmodule NSQ.Consumer do
   """
   @spec init(map) :: {:ok, cons_state}
   def init(cons_state) do
-    {:ok, conn_sup_pid} = NSQ.ConnectionSupervisor.start_link
+    {:ok, conn_sup_pid} = NSQ.Connection.Supervisor.start_link
     cons_state = %{cons_state | conn_sup_pid: conn_sup_pid}
 
     {:ok, conn_info_pid} = Agent.start_link(fn -> %{} end)
     cons_state = %{cons_state | conn_info_pid: conn_info_pid}
 
-    if cons_state.config.event_manager do
-      manager = cons_state.config.event_manager
-    else
-      {:ok, manager} = GenEvent.start_link
-    end
+    manager =
+      if cons_state.config.event_manager do
+        cons_state.config.event_manager
+      else
+        {:ok, manager} = GenEvent.start_link
+        manager
+      end
     cons_state = %{cons_state | event_manager_pid: manager}
 
     cons_state = %{cons_state | max_in_flight: cons_state.config.max_in_flight}
@@ -380,7 +382,7 @@ defmodule NSQ.Consumer do
   def connect_to_nsqd(nsqd, cons, cons_state) do
     Process.flag(:trap_exit, true)
     try do
-      {:ok, _pid} = NSQ.ConnectionSupervisor.start_child(
+      {:ok, _pid} = NSQ.Connection.Supervisor.start_child(
         cons, nsqd, cons_state
       )
 

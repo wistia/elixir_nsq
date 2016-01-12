@@ -69,7 +69,7 @@ defmodule NSQ.Producer do
 
   @typedoc """
   A tuple with a string ID (used to target the connection in
-  NSQ.ConnectionSupervisor) and a PID of the connection.
+  NSQ.Connection.Supervisor) and a PID of the connection.
   """
   @type connection :: {String.t, pid}
 
@@ -84,7 +84,7 @@ defmodule NSQ.Producer do
   # ------------------------------------------------------- #
   @spec init(pro_state) :: {:ok, pro_state}
   def init(pro_state) do
-    {:ok, conn_sup_pid} = NSQ.ConnectionSupervisor.start_link
+    {:ok, conn_sup_pid} = NSQ.Connection.Supervisor.start_link
     pro_state = %{pro_state | conn_sup_pid: conn_sup_pid}
 
     {:ok, conn_info_pid} = Agent.start_link(fn -> %{} end)
@@ -165,7 +165,7 @@ defmodule NSQ.Producer do
   @spec connect_to_nsqds([host_with_port], pid, pro_state) :: {:ok, pro_state}
   def connect_to_nsqds(nsqds, pro, pro_state) do
     Enum.map nsqds, fn(nsqd) ->
-      {:ok, _conn} = NSQ.ConnectionSupervisor.start_child(
+      {:ok, _conn} = NSQ.Connection.Supervisor.start_child(
         pro, nsqd, pro_state, [restart: :permanent]
       )
     end

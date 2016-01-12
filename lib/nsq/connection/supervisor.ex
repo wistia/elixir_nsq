@@ -1,4 +1,4 @@
-defmodule NSQ.ConnectionSupervisor do
+defmodule NSQ.Connection.Supervisor do
   @moduledoc """
   A consumer or producer will initialize this supervisor empty to start.
   Candidate nsqd connections will be discovered elsewhere and added with
@@ -11,12 +11,14 @@ defmodule NSQ.ConnectionSupervisor do
   use Supervisor
   alias NSQ.ConnInfo, as: ConnInfo
 
+
   # ------------------------------------------------------- #
   # Behaviour Implementation                                #
   # ------------------------------------------------------- #
   def start_link(opts \\ []) do
     Supervisor.start_link(__MODULE__, :ok, opts)
   end
+
 
   def start_child(parent, nsqd, parent_state \\ nil, opts \\ []) do
     parent_state = parent_state || GenServer.call(parent, :state)
@@ -39,6 +41,7 @@ defmodule NSQ.ConnectionSupervisor do
     child = worker(NSQ.Connection, args, opts)
     Supervisor.start_child(conn_sup_pid, child)
   end
+
 
   def init(:ok) do
     supervise([], strategy: :one_for_one)

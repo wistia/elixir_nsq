@@ -162,7 +162,7 @@ Potential event formats are:
 ### Supervision Tree
 
 For your convenience, this is the overall process structure of `elixir_nsq`.
-In practice, the ConnectionSupervisors and Task.Supervisors don't do much
+In practice, the Connection.Supervisors and Task.Supervisors don't do much
 automatic restarting because NSQ itself is built to handle that. But they are
 useful for propagating exit commands and keeping track of all running
 processes.
@@ -170,7 +170,7 @@ processes.
     Consumer Supervisor
       Consumer
         ConnInfo Agent
-        ConnectionSupervisor
+        Connection.Supervisor
           Connection
             Task.Supervisor
               Message
@@ -185,7 +185,7 @@ processes.
     Producer Supervisor
       Producer
         ConnInfo Agent
-        ConnectionSupervisor
+        Connection.Supervisor
           Connection
           Connection
 
