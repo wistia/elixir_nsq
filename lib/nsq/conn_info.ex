@@ -122,4 +122,26 @@ defmodule NSQ.ConnInfo do
   def delete(%{conn_info_pid: agent_pid}, conn_id) do
     delete(agent_pid, conn_id)
   end
+
+  @spec init(map) :: any
+  def init(state) do
+    update state, %{
+      max_rdy: state.max_rdy,
+      rdy_count: 0,
+      last_rdy: 0,
+      messages_in_flight: 0,
+      last_msg_timestamp: now,
+      retry_rdy_pid: nil,
+      finished_count: 0,
+      requeued_count: 0,
+      failed_count: 0,
+      backoff_count: 0,
+    }
+  end
+
+  @spec now :: integer
+  defp now do
+    {megasec, sec, microsec} = :os.timestamp
+    1_000_000 * megasec + sec + microsec / 1_000_000
+  end
 end

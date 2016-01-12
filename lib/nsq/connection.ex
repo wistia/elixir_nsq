@@ -84,9 +84,8 @@ defmodule NSQ.Connection do
   def init(conn_state) do
     {:ok, msg_sup_pid} = NSQ.MessageSupervisor.start_link
     conn_state = %{conn_state | msg_sup_pid: msg_sup_pid}
-    init_conn_info(conn_state)
-    connect_result = Initializer.connect(conn_state)
-    case connect_result do
+    conn_state |> ConnInfo.init
+    case conn_state |> Initializer.connect do
       {:ok, state} -> {:ok, state}
       {{:error, _reason}, state} -> {:ok, state}
     end
@@ -219,28 +218,6 @@ defmodule NSQ.Connection do
   # ------------------------------------------------------- #
   # Private Functions                                       #
   # ------------------------------------------------------- #
-
-  @spec now :: integer
-  defp now do
-    {megasec, sec, microsec} = :os.timestamp
-    1_000_000 * megasec + sec + microsec / 1_000_000
-  end
-
-  @spec init_conn_info(state) :: any
-  defp init_conn_info(state) do
-    ConnInfo.update state, %{
-      max_rdy: state.max_rdy,
-      rdy_count: 0,
-      last_rdy: 0,
-      messages_in_flight: 0,
-      last_msg_timestamp: now,
-      retry_rdy_pid: nil,
-      finished_count: 0,
-      requeued_count: 0,
-      failed_count: 0,
-      backoff_count: 0,
-    }
-  end
 
   @spec wait_for_zero_in_flight(pid, binary) :: any
   defp wait_for_zero_in_flight(agent_pid, conn_id) do
