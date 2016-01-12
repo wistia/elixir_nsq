@@ -16,7 +16,7 @@ defmodule NSQ.ProducerTest do
   end
 
   test "#new starts a new producer, discoverable via nsqlookupd" do
-    {:ok, producer} = NSQ.ProducerSupervisor.start_link(
+    {:ok, producer} = NSQ.Producer.Supervisor.start_link(
       @test_topic, %NSQ.Config{nsqds: @configured_nsqds}
     )
 
@@ -36,7 +36,7 @@ defmodule NSQ.ProducerTest do
   end
 
   test "messages added via pub are handled by a consumer" do
-    {:ok, producer} = NSQ.ProducerSupervisor.start_link(
+    {:ok, producer} = NSQ.Producer.Supervisor.start_link(
       @test_topic, %NSQ.Config{nsqds: @configured_nsqds}
     )
 
@@ -56,7 +56,7 @@ defmodule NSQ.ProducerTest do
   end
 
   test "messages added via mpub are handled by a consumer" do
-    {:ok, producer} = NSQ.ProducerSupervisor.start_link(
+    {:ok, producer} = NSQ.Producer.Supervisor.start_link(
       @test_topic, %NSQ.Config{nsqds: @configured_nsqds}
     )
 

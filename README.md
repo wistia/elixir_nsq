@@ -37,7 +37,7 @@ See these resources for more info on building client libraries:
 ## Publish Messages
 
 ```elixir
-{:ok, producer} = NSQ.ProducerSupervisor.start_link("my-topic", %NSQ.Config{
+{:ok, producer} = NSQ.Producer.Supervisor.start_link("my-topic", %NSQ.Config{
   nsqds: ["127.0.0.1:4150", "127.0.0.1:4151"]
 })
 

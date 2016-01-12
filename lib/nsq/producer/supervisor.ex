@@ -1,4 +1,4 @@
-defmodule NSQ.ProducerSupervisor do
+defmodule NSQ.Producer.Supervisor do
   use Supervisor
 
   def start_link(topic, config, opts \\ []) do
