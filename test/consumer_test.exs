@@ -400,7 +400,7 @@ defmodule NSQ.ConsumerTest do
     # Wait ~200ms for resume to be called, which should put us in "test the
     # waters" mode. In this mode, one random connection has RDY set to 1. NSQD
     # will immediately follow up by sending the message we requeued again.
-    :timer.sleep(200)
+    :timer.sleep(250)
     cons_state = Cons.get_state(consumer)
     assert 1 == ConnInfo.fetch(cons_state, conn1, :rdy_count) +
       ConnInfo.fetch(cons_state, conn2, :rdy_count)
@@ -417,7 +417,7 @@ defmodule NSQ.ConsumerTest do
     assert Cons.total_rdy_count(cons_state) == 0
 
     # Then we'll go into "test the waters mode" again in 200ms.
-    :timer.sleep(200)
+    :timer.sleep(250)
     cons_state = Cons.get_state(consumer)
     assert 1 == ConnInfo.fetch(cons_state, conn1, :rdy_count) +
       ConnInfo.fetch(cons_state, conn2, :rdy_count)
