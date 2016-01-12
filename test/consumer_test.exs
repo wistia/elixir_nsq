@@ -11,9 +11,11 @@ defmodule NSQ.ConsumerTest do
   use ExUnit.Case, async: true
   doctest NSQ.Consumer
   alias NSQ.Consumer, as: Cons
+  alias NSQ.Consumer.Helpers, as: H
   alias HTTPotion, as: HTTP
+  alias NSQ.Consumer.Connections
   alias NSQ.Connection, as: Conn
-  alias NSQ.ConnInfo, as: ConnInfo
+  alias NSQ.ConnInfo
   require Logger
 
   @test_topic "__nsq_consumer_test_topic__"
@@ -31,7 +33,7 @@ defmodule NSQ.ConsumerTest do
 
   test "msg_timeout" do
     test_pid = self
-    {:ok, _consumer} = NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    {:ok, _consumer} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
       msg_timeout: 1000,
       message_handler: fn(body, _msg) ->
@@ -54,7 +56,7 @@ defmodule NSQ.ConsumerTest do
 
   test "we don't go over max_in_flight, and keep processing after saturation" do
     test_pid = self
-    {:ok, consumer} = NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    {:ok, consumer} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}, {"127.0.0.1", 6760}],
       max_in_flight: 4,
       message_handler: fn(_body, _msg) ->
@@ -88,7 +90,7 @@ defmodule NSQ.ConsumerTest do
 
   test "closing the connection waits for outstanding messages and cleanly exits" do
     test_pid = self
-    {:ok, consumer} = NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    {:ok, consumer} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
       message_handler: fn(body, _msg) ->
         case body do
@@ -116,7 +118,7 @@ defmodule NSQ.ConsumerTest do
 
   test "notifies the event manager of relevant events" do
     test_pid = self
-    {:ok, consumer} = NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    {:ok, consumer} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
       message_handler: fn(_body, _msg) ->
         send(test_pid, :handled)
@@ -135,7 +137,7 @@ defmodule NSQ.ConsumerTest do
   end
 
   test "updating connection stats" do
-    {:ok, consumer} = NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    {:ok, consumer} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       lookupd_poll_interval: 500,
       nsqds: ["127.0.0.1:6750"],
       message_handler: fn(body, _msg) ->
@@ -188,7 +190,7 @@ defmodule NSQ.ConsumerTest do
 
   test "a connection is terminated, cleaned up, and restarted when the tcp connection closes" do
     test_pid = self
-    {:ok, cons_sup_pid} = NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    {:ok, cons_sup_pid} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       lookupd_poll_interval: 500,
       nsqds: [{"127.0.0.1", 6750}],
       message_handler: fn(_body, _msg) ->
@@ -203,7 +205,7 @@ defmodule NSQ.ConsumerTest do
 
     # Abruptly close the connection
     cons = Cons.get(cons_sup_pid)
-    [conn1] = Cons.get_connections(cons)
+    [conn1] = Connections.get(cons)
     conn_state = Conn.get_state(conn1)
 
     Logger.warn "Closing socket as part of test..."
@@ -214,12 +216,12 @@ defmodule NSQ.ConsumerTest do
     # actually dead. So we clear dead connections manually here.
     :timer.sleep(100)
     GenServer.call(cons, :delete_dead_connections)
-    assert length(Cons.get_connections(cons)) == 0
+    assert length(Connections.get(cons)) == 0
 
     # Wait for the new connection to come up. It should be different from the
     # old one.
     :timer.sleep(600)
-    [conn2] = Cons.get_connections(cons)
+    [conn2] = Connections.get(cons)
     assert conn1 != conn2
 
     # Send another message so we can verify the new connection is working.
@@ -229,7 +231,7 @@ defmodule NSQ.ConsumerTest do
 
   test "establishes a connection to NSQ and processes messages" do
     test_pid = self
-    NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
       message_handler: fn(body, msg) ->
         assert body == "HTTP message"
@@ -248,7 +250,7 @@ defmodule NSQ.ConsumerTest do
 
   test "discovery via nsqlookupd" do
     test_pid = self
-    {:ok, _} = NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    {:ok, _} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       lookupd_poll_interval: 500,
       nsqlookupds: ["127.0.0.1:6771", "127.0.0.1:6781"],
       message_handler: fn(body, msg) ->
@@ -269,7 +271,7 @@ defmodule NSQ.ConsumerTest do
   test "#start_link lives when given a bad address and not able to reconnect" do
     test_pid = self
     Process.flag(:trap_exit, true)
-    {:ok, consumer} = NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    {:ok, consumer} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 7777}],
       max_reconnect_attempts: 0,
       message_handler: fn(body, msg) ->
@@ -286,7 +288,7 @@ defmodule NSQ.ConsumerTest do
 
   test "#start_link lives when given a bad address but able to reconnect" do
     test_pid = self
-    {:ok, consumer} = NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    {:ok, consumer} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 7777}],
       max_reconnect_attempts: 2,
       lookupd_poll_interval: 500,
@@ -297,7 +299,7 @@ defmodule NSQ.ConsumerTest do
         :ok
       end
     })
-    [conn] = NSQ.Consumer.get_connections(NSQ.Consumer.get(consumer))
+    [conn] = Connections.get(NSQ.Consumer.get(consumer))
     conn_state = NSQ.Connection.get_state(conn)
     assert conn_state.connect_attempts == 1
     :timer.sleep(700)
@@ -308,7 +310,7 @@ defmodule NSQ.ConsumerTest do
 
   test "receives messages from mpub" do
     test_pid = self
-    NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
       message_handler: fn(body, _msg) ->
         assert body == "mpubtest"
@@ -332,7 +334,7 @@ defmodule NSQ.ConsumerTest do
 
   test "processes many messages concurrently" do
     test_pid = self
-    NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
       message_handler: fn(_body, _msg) ->
         :timer.sleep(1000)
@@ -348,10 +350,12 @@ defmodule NSQ.ConsumerTest do
     assert_receive_n_times(:handled, 1000, 2000)
   end
 
+  # NOTE: For this test, it's important that the requeue delay is a few hundred
+  # milliseconds higher than the backoff interval (200ms) so that we have a
+  # chance to measure the RDY count for each connection.
   test "when a message raises an exception, goes through the backoff process" do
-    test_pid = self
     {:ok, run_counter} = Agent.start_link(fn -> 0 end)
-    {:ok, sup_pid} = NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    {:ok, sup_pid} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       backoff_strategy: :test, # fixed 200ms for testing
       max_in_flight: 100,
       nsqds: [{"127.0.0.1", 6750}, {"127.0.0.1", 6760}],
@@ -361,36 +365,42 @@ defmodule NSQ.ConsumerTest do
       # resume.
       message_handler: fn(_body, _msg) ->
         Agent.update(run_counter, fn(count) -> count + 1 end)
-        send(test_pid, :handled)
-        if Agent.get(run_counter, fn(count) -> count end) < 3 do
-          {:req, 1000, true}
-        else
-          :ok
+        run_count = Agent.get(run_counter, fn(count) -> count end)
+        cond do
+          run_count == 1 ->
+            :ok
+          run_count < 4 ->
+            {:req, 500, true}
+          true ->
+            :ok
         end
       end
     })
-    :timer.sleep(200)
+
+    NSQ.Consumer.event_manager(sup_pid)
+      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self)
+
     consumer = Cons.get(sup_pid)
     cons_state = Cons.get_state(consumer)
-    [conn1, conn2] = Cons.get_connections(cons_state)
+    [conn1, conn2] = Connections.get(cons_state)
 
     # We start off with RDY=1 for each connection. It would get naturally
     # bumped when it runs maybe_update_rdy after processing the first message.
-    assert Cons.total_rdy_count(cons_state) == 2
+    assert H.total_rdy_count(cons_state) == 2
     assert cons_state.backoff_counter == 0
     assert cons_state.backoff_duration == 0
     [1, 1] = ConnInfo.fetch(cons_state, conn1, [:rdy_count, :last_rdy])
     [1, 1] = ConnInfo.fetch(cons_state, conn2, [:rdy_count, :last_rdy])
 
-    # Our message handler enters into backoff mode and requeues the message
-    # 1 second from now.
+    # Send one successful message through so our subsequent timing is more
+    # predictable.
     HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
-    receive do
-      :handled -> :ok
-    after
-      5100 -> raise "message took too long to run"
-    end
-    :timer.sleep(50)
+    assert_receive({:message_finished, _}, 5000)
+
+    # Our message handler enters into backoff mode and requeues the message.
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
+    assert_receive({:message_requeued, _}, 2000)
+    assert_receive(:backoff, 1000)
 
     # Assert that we're now in backoff mode.
     cons_state = Cons.get_state(consumer)
@@ -398,30 +408,26 @@ defmodule NSQ.ConsumerTest do
     assert cons_state.backoff_duration == 200
     [0, 0] = ConnInfo.fetch(cons_state, conn1, [:rdy_count, :last_rdy])
     [0, 0] = ConnInfo.fetch(cons_state, conn2, [:rdy_count, :last_rdy])
-    assert Cons.total_rdy_count(cons_state) == 0
+    assert H.total_rdy_count(cons_state) == 0
 
-    # Wait ~200ms for resume to be called, which should put us in "test the
-    # waters" mode. In this mode, one random connection has RDY set to 1. NSQD
-    # will immediately follow up by sending the message we requeued again.
+    # Wait ~200ms for "test the waters" mode. In this mode, one random
+    # connection has RDY set to 1. NSQD will immediately follow up by sending
+    # the message we requeued again.
     :timer.sleep(250)
     cons_state = Cons.get_state(consumer)
     assert 1 == ConnInfo.fetch(cons_state, conn1, :rdy_count) +
       ConnInfo.fetch(cons_state, conn2, :rdy_count)
     assert 1 == ConnInfo.fetch(cons_state, conn1, :last_rdy) +
       ConnInfo.fetch(cons_state, conn2, :last_rdy)
-    assert Cons.total_rdy_count(cons_state) == 1
-    receive do
-      :handled -> :ok
-    after
-      5100 -> raise "waited too long for retry to run"
-    end
+    assert H.total_rdy_count(cons_state) == 1
+    assert_receive({:message_requeued, _}, 5000)
+    assert_receive(:backoff, 100)
 
     # When the message handler fails again, we go back to backoff mode.
-    :timer.sleep(50)
     cons_state = Cons.get_state(consumer)
     [0, 0] = ConnInfo.fetch(cons_state, conn1, [:rdy_count, :last_rdy])
     [0, 0] = ConnInfo.fetch(cons_state, conn2, [:rdy_count, :last_rdy])
-    assert Cons.total_rdy_count(cons_state) == 0
+    assert H.total_rdy_count(cons_state) == 0
 
     # Then we'll go into "test the waters mode" again in 200ms.
     :timer.sleep(250)
@@ -430,29 +436,21 @@ defmodule NSQ.ConsumerTest do
       ConnInfo.fetch(cons_state, conn2, :rdy_count)
     assert 1 == ConnInfo.fetch(cons_state, conn1, :last_rdy) +
       ConnInfo.fetch(cons_state, conn2, :last_rdy)
-    assert Cons.total_rdy_count(cons_state) == 1
+    assert H.total_rdy_count(cons_state) == 1
 
     # After the message handler runs successfully, it decrements the
     # backoff_counter. We need one more successful message to decrement the
     # counter to 0 and leave backoff mode, so let's send one.
-    receive do
-      :handled -> :ok
-    after
-      5100 -> raise "waited too long for retry to run"
-    end
+    assert_receive({:message_finished, _}, 2000)
 
     # Send a successful message and leave backoff mode! (I hope!)
     HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
-    receive do
-      :handled -> :ok
-    after
-      5100 -> raise "waited too long for retry to run"
-    end
-    :timer.sleep(500)
+    assert_receive({:message_finished, _}, 2000)
+    assert_receive(:resume, 100)
     cons_state = Cons.get_state(consumer)
     [50, 50] = ConnInfo.fetch(cons_state, conn1, [:rdy_count, :last_rdy])
     [50, 50] = ConnInfo.fetch(cons_state, conn2, [:rdy_count, :last_rdy])
-    assert Cons.total_rdy_count(cons_state) == 100
+    assert H.total_rdy_count(cons_state) == 100
   end
 
   test "retry_rdy flow" do
@@ -461,7 +459,7 @@ defmodule NSQ.ConsumerTest do
     # max_in_flight so it succeeds next time.
 
     test_pid = self
-    {:ok, cons_sup_pid} = NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    {:ok, cons_sup_pid} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
       max_in_flight: 0,
       rdy_retry_delay: 300,
@@ -471,7 +469,7 @@ defmodule NSQ.ConsumerTest do
       end
     })
     cons = Cons.get(cons_sup_pid)
-    [conn] = Cons.get_connections(cons)
+    [conn] = Connections.get(cons)
 
     HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
     refute_receive :handled, 500
@@ -491,9 +489,9 @@ defmodule NSQ.ConsumerTest do
 
   test "rdy redistribution when number of connections > max in flight" do
     test_pid = self
-    {:ok, cons_sup_pid} = NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    {:ok, cons_sup_pid} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}, {"127.0.0.1", 6760}],
-      rdy_redistribute_interval: 500,
+      rdy_redistribute_interval: 100,
       low_rdy_idle_timeout: 1000,
       max_in_flight: 1,
       message_handler: fn(_body, _msg) ->
@@ -503,15 +501,15 @@ defmodule NSQ.ConsumerTest do
     })
     cons = Cons.get(cons_sup_pid)
     cons_state = Cons.get_state(cons)
-    [conn1, conn2] = Cons.get_connections(cons)
-    assert Cons.total_rdy_count(cons_state) == 1
+    [conn1, conn2] = Connections.get(cons)
+    assert H.total_rdy_count(cons_state) == 1
     assert 1 == ConnInfo.fetch(cons_state, conn1, :rdy_count) +
       ConnInfo.fetch(cons_state, conn2, :rdy_count)
     :timer.sleep(1500)
 
     IO.puts "Letting RDY redistribute 10 times..."
     {conn1_rdy, conn2_rdy} = Enum.reduce 1..10, {0, 0}, fn(i, {rdy1, rdy2}) ->
-      :timer.sleep(1000)
+      :timer.sleep(100)
       result = {
         rdy1 + ConnInfo.fetch(cons_state, conn1, :rdy_count),
         rdy2 + ConnInfo.fetch(cons_state, conn2, :rdy_count)
@@ -521,17 +519,13 @@ defmodule NSQ.ConsumerTest do
     end
 
     IO.puts "Distribution: #{conn1_rdy} : #{conn2_rdy}"
-    rdy_distributed_count = conn1_rdy + conn2_rdy
-    assert conn1_rdy > 0
-    assert conn2_rdy > 0
-    assert rdy_distributed_count >= 10 && rdy_distributed_count <= 12
-    assert abs(conn1_rdy - conn2_rdy) < 8
+    assert conn1_rdy == 5
+    assert conn2_rdy == 5
   end
 
   test "works with tls" do
-    Logger.configure(level: :debug)
     test_pid = self
-    NSQ.ConsumerSupervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
       tls_v1: true,
       tls_insecure_skip_verify: true,

@@ -1,4 +1,4 @@
-defmodule NSQ.MessageSupervisor do
+defmodule NSQ.Message.Supervisor do
   @moduledoc """
   """
 
