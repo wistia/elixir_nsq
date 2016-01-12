@@ -37,6 +37,20 @@ defmodule NSQ.Connection.Command do
     end
   end
 
+
+  @spec send_response_to_caller(C.state, binary) :: {:ok, C.state}
+  def send_response_to_caller(state, data) do
+    GenEvent.notify(state.event_manager_pid, {:response, data})
+    {item, cmd_resp_queue} = :queue.out(state.cmd_resp_queue)
+    case item do
+      {:value, {_cmd, {pid, ref}, :reply}} ->
+        send(pid, {ref, data})
+      :empty -> :ok
+    end
+    {:ok, %{state | cmd_resp_queue: cmd_resp_queue}}
+  end
+
+
   @spec flush_cmd_queue(C.state) :: C.state
   def flush_cmd_queue(state) do
     {item, new_queue} = :queue.out(state.cmd_queue)

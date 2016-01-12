@@ -252,6 +252,7 @@ defmodule NSQ.Consumer.RDY do
     end
   end
 
+
   @spec calc_max_possible(C.state, map) :: integer
   defp calc_max_possible(cons_state, conn_info) do
     rdy_count = conn_info.rdy_count

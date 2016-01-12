@@ -1,6 +1,7 @@
 defmodule NSQ.Connection.MessageHandling do
   alias NSQ.Connection, as: C
   alias NSQ.ConnInfo
+  alias NSQ.Connection.Command
   import NSQ.Protocol
   require Logger
 
@@ -36,7 +37,7 @@ defmodule NSQ.Connection.MessageHandling do
         respond_to_heartbeat(state)
 
       {:response, data} ->
-        {:ok, state} = state |> send_response_to_caller(data)
+        {:ok, state} = state |> Command.send_response_to_caller(data)
 
       {:error, data} ->
         state |> log_error(nil, data)
@@ -55,13 +56,13 @@ defmodule NSQ.Connection.MessageHandling do
   @spec update_conn_stats_on_message_done(C.state, any) :: any
   def update_conn_stats_on_message_done(state, ret_val) do
     ConnInfo.update state, fn(info) ->
-      info |> updated_stats_from_ret_val(ret_val)
+      info |> update_stats_from_ret_val(ret_val)
     end
   end
 
 
-  @spec updated_stats_from_ret_val(map, any) :: map
-  defp updated_stats_from_ret_val(info, ret_val) do
+  @spec update_stats_from_ret_val(map, any) :: map
+  defp update_stats_from_ret_val(info, ret_val) do
     info = %{info | messages_in_flight: info.messages_in_flight - 1}
     case ret_val do
       :ok ->
@@ -87,19 +88,6 @@ defmodule NSQ.Connection.MessageHandling do
   defp respond_to_heartbeat(state) do
     GenEvent.notify(state.event_manager_pid, :heartbeat)
     state.socket |> Socket.Stream.send!(encode(:noop))
-  end
-
-
-  @spec send_response_to_caller(C.state, binary) :: {:ok, C.state}
-  defp send_response_to_caller(state, data) do
-    GenEvent.notify(state.event_manager_pid, {:response, data})
-    {item, cmd_resp_queue} = :queue.out(state.cmd_resp_queue)
-    case item do
-      {:value, {_cmd, {pid, ref}, :reply}} ->
-        send(pid, {ref, data})
-      :empty -> :ok
-    end
-    {:ok, %{state | cmd_resp_queue: cmd_resp_queue}}
   end
 
 

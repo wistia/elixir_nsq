@@ -1,6 +1,7 @@
 defmodule NSQ.ConnInfo do
   require Logger
 
+
   @doc """
   Given a consumer state object and an nsqd host/port tuple, return the
   connection ID.
@@ -8,6 +9,7 @@ defmodule NSQ.ConnInfo do
   def conn_id(parent, {host, port} = _nsqd) do
     "parent:#{inspect parent}:conn:#{host}:#{port}"
   end
+
 
   @doc """
   Given a `conn` object return by `Consumer.get_connections`, return the
@@ -17,6 +19,7 @@ defmodule NSQ.ConnInfo do
     conn_id
   end
 
+
   @doc """
   Given a connection state object, return the connection ID.
   """
@@ -24,12 +27,14 @@ defmodule NSQ.ConnInfo do
     conn_id(parent, {host, port})
   end
 
+
   @doc """
   Get info for all connections in a map like `%{conn_id: %{... data ...}}`.
   """
   def all(agent_pid) when is_pid(agent_pid) do
     Agent.get(agent_pid, fn(data) -> data end)
   end
+
 
   @doc """
   `func` is passed `conn_info` for each connection.
@@ -40,6 +45,7 @@ defmodule NSQ.ConnInfo do
     end
   end
 
+
   @doc """
   Get info for the connection matching `conn_id`.
   """
@@ -47,10 +53,12 @@ defmodule NSQ.ConnInfo do
     Agent.get(agent_pid, fn(data) -> data[conn_id] || %{} end)
   end
 
+
   @doc false
   def fetch(%{conn_info_pid: agent_pid}, conn_id) do
     fetch(agent_pid, conn_id)
   end
+
 
   @doc """
   Get specific data for the connection, e.g.:
@@ -69,15 +77,18 @@ defmodule NSQ.ConnInfo do
     end
   end
 
+
   @doc false
   def fetch(%{conn_info_pid: agent_pid} = _state, {conn_id, _conn_pid} = _conn, keys) do
     fetch(agent_pid, conn_id, keys)
   end
 
+
   @doc false
   def fetch(%{conn_info_pid: agent_pid} = _state, conn_id, keys) do
     fetch(agent_pid, conn_id, keys)
   end
+
 
   @doc """
   Update the info for a specific connection matching `conn_id`. `conn_info` is
@@ -88,6 +99,7 @@ defmodule NSQ.ConnInfo do
       Dict.put(data, conn_id, func.(data[conn_id] || %{}))
     end
   end
+
 
   @doc """
   Update the info for a specific connection matching `conn_id`. The map is
@@ -100,15 +112,18 @@ defmodule NSQ.ConnInfo do
     end
   end
 
+
   @doc false
   def update(%{conn_info_pid: agent_pid}, conn_id, func) do
     update(agent_pid, conn_id, func)
   end
 
+
   @doc false
   def update(%{conn_info_pid: agent_pid, parent: parent, nsqd: nsqd} = state, func) do
     update(agent_pid, conn_id(parent, nsqd), func)
   end
+
 
   @doc """
   Delete connection info matching `conn_id`. This should be called when a
@@ -118,10 +133,12 @@ defmodule NSQ.ConnInfo do
     Agent.update(agent_pid, fn(data) -> Dict.delete(data, conn_id) end)
   end
 
+
   @doc false
   def delete(%{conn_info_pid: agent_pid}, conn_id) do
     delete(agent_pid, conn_id)
   end
+
 
   @spec init(map) :: any
   def init(state) do
@@ -138,6 +155,7 @@ defmodule NSQ.ConnInfo do
       backoff_count: 0,
     }
   end
+
 
   @spec now :: integer
   defp now do

@@ -135,6 +135,7 @@ defmodule NSQ.Config do
 
   defstruct Enum.into(@default_config, [])
 
+
   @doc """
   Given a config, tell us what's wrong with it. If nothing is wrong, we'll
   return `{:ok, config}`.
@@ -172,11 +173,13 @@ defmodule NSQ.Config do
     end
   end
 
+
   def normalize(config) do
     config = %NSQ.Config{config | nsqds: normalize_hosts(config.nsqds)}
     config = %NSQ.Config{config | nsqlookupds: normalize_hosts(config.nsqlookupds)}
     {:ok, config}
   end
+
 
   def normalize_hosts(hosts) do
     Enum.map hosts, fn (host_with_port) ->
@@ -195,6 +198,7 @@ defmodule NSQ.Config do
     end
   end
 
+
   defp range_error(val, min, max) do
     cond do
       val == nil -> :ok
@@ -204,9 +208,11 @@ defmodule NSQ.Config do
     end
   end
 
+
   defp matches_any?(val, candidates) do
     Enum.any?(candidates, fn(candidate) -> candidate == val end)
   end
+
 
   defp no_match_error(val, candidates) do
     if matches_any?(val, candidates) do

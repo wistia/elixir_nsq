@@ -68,7 +68,7 @@ defmodule NSQ.Message do
     # Kick off processing in a separate process, so we can kill it if it takes
     # too long.
     parent = self
-    {:ok, pid} = Task.start_link fn ->
+    pid = spawn_link fn ->
       process_without_timeout(parent, message)
     end
     message = %{message | processing_pid: pid}

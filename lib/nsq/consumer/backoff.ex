@@ -12,8 +12,7 @@ defmodule NSQ.Consumer.Backoff do
 
 
   @doc """
-  Called from `handle_call/3` when we need to decide what to do about the
-  current backoff state. Not for external use.
+  Decision point about whether to continue/end/ignore backoff.
   """
   @spec start_stop_continue(pid, atom, C.state) :: {:ok, C.state}
   def start_stop_continue(cons, backoff_signal, cons_state) do
@@ -77,6 +76,7 @@ defmodule NSQ.Consumer.Backoff do
   end
 
 
+  @spec backoff(pid, C.state, boolean) :: {:ok, C.state}
   defp backoff(cons, cons_state, backoff_signal) do
     backoff_duration = calculate_backoff(cons_state)
     Logger.warn "backing off for #{backoff_duration / 1000} seconds (backoff level #{cons_state.backoff_counter}), setting all to RDY 0"
@@ -90,6 +90,7 @@ defmodule NSQ.Consumer.Backoff do
   end
 
 
+  @spec update_backoff_counter(C.state, atom) :: {boolean, C.state}
   defp update_backoff_counter(cons_state, backoff_signal) do
     {backoff_updated, backoff_counter} = cond do
       backoff_signal == :resume ->
@@ -109,6 +110,7 @@ defmodule NSQ.Consumer.Backoff do
   end
 
 
+  @spec exit_backoff(pid, C.state) :: {:ok, C.state}
   defp exit_backoff(cons, cons_state) do
     count = per_conn_max_in_flight(cons_state)
     Logger.warn "exiting backoff, returning all to RDY #{count}"
