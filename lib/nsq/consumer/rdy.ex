@@ -8,6 +8,7 @@ defmodule NSQ.Consumer.RDY do
   require Logger
   alias NSQ.ConnInfo
   alias NSQ.Consumer, as: C
+  alias NSQ.Consumer.Connections
   import NSQ.Consumer.Helpers
 
 
@@ -202,7 +203,7 @@ defmodule NSQ.Consumer.RDY do
 
   @spec should_redistribute?(C.state) :: boolean
   defp should_redistribute?(cons_state) do
-    conn_count = C.count_connections(cons_state)
+    conn_count = Connections.count(cons_state)
     in_backoff = cons_state.backoff_counter > 0
     in_backoff_timeout = cons_state.backoff_duration > 0
 

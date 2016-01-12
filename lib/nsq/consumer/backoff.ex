@@ -7,6 +7,7 @@ defmodule NSQ.Consumer.Backoff do
   require Logger
   alias NSQ.ConnInfo
   alias NSQ.Consumer, as: C
+  alias NSQ.Consumer.Connections
   alias NSQ.Consumer.RDY
   import NSQ.Consumer.Helpers
 
@@ -69,7 +70,7 @@ defmodule NSQ.Consumer.Backoff do
       if cons_state.stop_flag do
         {:ok, %{cons_state | backoff_duration: 0}}
       else
-        conn_count = C.count_connections(cons_state)
+        conn_count = Connections.count(cons_state)
 
         if conn_count == 0 do
           # This could happen if nsqlookupd suddenly stops discovering
@@ -119,11 +120,9 @@ defmodule NSQ.Consumer.Backoff do
   end
 
 
-  @doc """
-  Returns the backoff duration in milliseconds. Different strategies can
-  technically be used, but currently there is only `:exponential` in production
-  mode and `:test` for tests. Not for external use.
-  """
+  # Returns the backoff duration in milliseconds. Different strategies can
+  # technically be used, but currently there is only `:exponential` in
+  # production mode and `:test` for tests. Not for external use.
   @spec calculate_backoff(C.state) :: integer
   defp calculate_backoff(cons_state) do
     case cons_state.config.backoff_strategy do
@@ -133,11 +132,9 @@ defmodule NSQ.Consumer.Backoff do
   end
 
 
-  @doc """
-  Used to calculate backoff in milliseconds in production. We include jitter so
-  that, if we have many consumers in a cluster, we avoid the thundering herd
-  problem when they attempt to resume. Not for external use.
-  """
+  # Used to calculate backoff in milliseconds in production. We include jitter
+  # so that, if we have many consumers in a cluster, we avoid the thundering
+  # herd problem when they attempt to resume. Not for external use.
   @spec exponential_backoff(C.state) :: integer
   defp exponential_backoff(cons_state) do
     attempts = cons_state.backoff_counter

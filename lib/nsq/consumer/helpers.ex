@@ -1,5 +1,6 @@
 defmodule NSQ.Consumer.Helpers do
   alias NSQ.Consumer, as: C
+  alias NSQ.Consumer.Connections
   alias NSQ.ConnInfo
 
 
@@ -36,7 +37,7 @@ defmodule NSQ.Consumer.Helpers do
   @spec per_conn_max_in_flight(C.state) :: integer
   def per_conn_max_in_flight(cons_state) do
     max_in_flight = cons_state.max_in_flight
-    conn_count = C.count_connections(cons_state)
+    conn_count = Connections.count(cons_state)
     min(max(1, max_in_flight / conn_count), max_in_flight) |> round
   end
 
@@ -44,5 +45,14 @@ defmodule NSQ.Consumer.Helpers do
   @spec now() :: integer
   def now do
     :calendar.datetime_to_gregorian_seconds(:calendar.universal_time)
+  end
+
+
+  @spec conn_from_nsqd(pid, C.host_with_port, C.state) :: C.connection
+  def conn_from_nsqd(cons, nsqd, cons_state) do
+    needle = ConnInfo.conn_id(cons, nsqd)
+    Enum.find C.get_connections(cons_state), fn({conn_id, _}) ->
+      needle == conn_id
+    end
   end
 end
