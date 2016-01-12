@@ -30,6 +30,23 @@ defmodule NSQ.Consumer.Connections do
   end
 
 
+  def close(cons_state) do
+    Logger.info "Closing connections for consumer #{inspect self}"
+    connections = Connections.get(cons_state)
+    Task.start_link fn ->
+      Enum.map connections, fn({_, conn_pid}) ->
+        Task.start_link(NSQ.Connection, :close, [conn_pid])
+      end
+    end
+    {:ok, %{cons_state | stop_flag: true}}
+  end
+
+  def close!(cons_state) do
+    {:ok, cons_state} = close(cons_state)
+    cons_state
+  end
+
+
   def refresh(cons_state) do
     {:ok, cons_state} = delete_dead(cons_state)
     {:ok, cons_state} = reconnect_failed(cons_state)
