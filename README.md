@@ -27,7 +27,7 @@ See these resources for more info on building client libraries:
 - [x] Graceful connection closing
 - [x] TLS support
 - [x] Auth support
-- [ ] Deflate support
+- [x] Deflate support
 - [ ] Snappy support
 - [x] Delegates
 - [x] Test Message TOUCH

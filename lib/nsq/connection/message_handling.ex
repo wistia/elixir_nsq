@@ -1,6 +1,7 @@
 defmodule NSQ.Connection.MessageHandling do
   alias NSQ.Connection, as: C
   alias NSQ.ConnInfo
+  alias NSQ.Connection.Buffer
   alias NSQ.Connection.Command
   import NSQ.Protocol
   require Logger
@@ -11,22 +12,20 @@ defmodule NSQ.Connection.MessageHandling do
   after the handshake. We send each incoming NSQ message as an erlang message
   back to the connection for handling.
   """
-  def recv_nsq_messages(sock, conn, timeout) do
-    case sock |> Socket.Stream.recv(4, timeout: timeout) do
+  def recv_nsq_messages(conn_state, conn) do
+    case conn_state.reader |> Buffer.recv(4) do
       {:error, :timeout} ->
         # If publishing is quiet, we won't receive any messages in the timeout.
         # This is fine. Let's just try again!
-        recv_nsq_messages(sock, conn, timeout)
+        conn_state |> recv_nsq_messages(conn)
       {:ok, <<msg_size :: size(32)>>} ->
         # Got a message! Decode it and let the connection know. We just
         # received data on the socket to get the size of this message, so if we
         # timeout in here, that's probably indicative of a problem.
-
-        {:ok, raw_msg_data} =
-          sock |> Socket.Stream.recv(msg_size, timeout: timeout)
+        raw_msg_data = conn_state.reader |> Buffer.recv!(msg_size)
         decoded = decode(raw_msg_data)
         GenServer.cast(conn, {:nsq_msg, decoded})
-        recv_nsq_messages(sock, conn, timeout)
+        conn_state |> recv_nsq_messages(conn)
     end
   end
 
@@ -87,7 +86,7 @@ defmodule NSQ.Connection.MessageHandling do
   @spec respond_to_heartbeat(C.state) :: :ok
   defp respond_to_heartbeat(state) do
     GenEvent.notify(state.event_manager_pid, :heartbeat)
-    state.socket |> Socket.Stream.send!(encode(:noop))
+    state.writer |> Buffer.send!(encode(:noop))
   end
 
 
@@ -109,7 +108,8 @@ defmodule NSQ.Connection.MessageHandling do
     message = %NSQ.Message{message |
       connection: self,
       consumer: state.parent,
-      socket: state.socket,
+      reader: state.reader,
+      writer: state.writer,
       config: state.config,
       msg_timeout: state.msg_timeout,
       event_manager_pid: state.event_manager_pid
