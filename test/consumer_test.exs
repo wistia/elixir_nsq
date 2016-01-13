@@ -625,7 +625,6 @@ defmodule NSQ.ConsumerTest do
   end
 
   test "deflate" do
-    Logger.configure(level: :debug)
     test_pid = self
     NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
@@ -643,7 +642,5 @@ defmodule NSQ.ConsumerTest do
 
     HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
     assert_receive(:handled, 2000)
-
-    # :timer.sleep 6000
   end
 end

@@ -121,10 +121,14 @@ defmodule NSQ.Connection.Buffer do
   end
 
 
+  # This tries to copy the semantics of a standard socket recv. That is, if you
+  # give it a size, it will block until we have enough data then return it. If
+  # you pass 0 as the size, we'll block until there's X (i.e. an undefined
+  # amount > 0) data and return it.
   defp do_recv(state, size) do
     cond do
       state.buffered_data_size > 0 && state.buffered_data_size >= size ->
-        {taken, leftover} = state.buffered_data |> String.split_at(size)
+        <<taken::binary-size(size)>> <> leftover = state.buffered_data
         state = %{state |
           buffered_data: leftover,
           buffered_data_size: byte_size(leftover)
@@ -139,11 +143,9 @@ defmodule NSQ.Connection.Buffer do
   end
 
 
-  @doc """
-  Grabs as much data from the socket as is available, combines it with any
-  compressed data from previous buffering, decompresses it, and stores the
-  output in several state properties.
-  """
+  # Grabs as much data from the socket as is available, combines it with any
+  # compressed data from previous buffering, decompresses it, and stores the
+  # output in several state properties.
   defp buffer(state) do
     received =
       state.socket |> Socket.Stream.recv(0, timeout: state.timeout)
@@ -155,6 +157,9 @@ defmodule NSQ.Connection.Buffer do
   end
 
 
+  # During initialization, it's highly possible that NSQ sends us compressed
+  # messages that are buffered before we start decompressing on the fly. This
+  # assumes all messages in the buffer are compressed and decompresses them.
   defp convert_plaintext_buffer(state, compressor) do
     case compressor do
       :deflate ->
@@ -173,6 +178,8 @@ defmodule NSQ.Connection.Buffer do
   end
 
 
+  # Given a chunk of data, decompress as much as we can and store it in its
+  # appropriate place in the buffer.
   defp add_raw_chunk_to_buffer!(state, raw_chunk) do
     raw_chunk = state.compressed_data <> raw_chunk
 
