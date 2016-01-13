@@ -32,7 +32,7 @@ defmodule NSQ.Connection do
   A map, but we can be more specific by asserting some entries that should be
   set for a connection's state map.
   """
-  @type state :: %{parent: pid, socket: pid, config: NSQ.Config.t, nsqd: host_with_port}
+  @type state :: %{parent: pid, config: NSQ.Config.t, nsqd: host_with_port}
 
 
   # ------------------------------------------------------- #
@@ -41,6 +41,9 @@ defmodule NSQ.Connection do
   @initial_state %{
     parent: nil,
     socket: nil,
+    reader: nil,
+    writer: nil,
+    connected: nil,
     cmd_resp_queue: :queue.new,
     cmd_queue: :queue.new,
     config: %{},
@@ -57,7 +60,7 @@ defmodule NSQ.Connection do
     connect_attempts: 0,
     stop_flag: false,
     conn_info_pid: nil,
-    msg_timeout: nil
+    msg_timeout: nil,
   }
 
 
@@ -82,9 +85,17 @@ defmodule NSQ.Connection do
 
   @spec init(state) :: {:ok, state}
   def init(conn_state) do
+    {:ok, reader} = NSQ.Connection.Buffer.start_link
+    conn_state = %{conn_state | reader: reader}
+
+    {:ok, writer} = NSQ.Connection.Buffer.start_link
+    conn_state = %{conn_state | writer: writer}
+
     {:ok, msg_sup_pid} = NSQ.Message.Supervisor.start_link
     conn_state = %{conn_state | msg_sup_pid: msg_sup_pid}
+
     conn_state |> ConnInfo.init
+
     case conn_state |> Initializer.connect do
       {:ok, state} -> {:ok, state}
       {{:error, _reason}, state} -> {:ok, state}

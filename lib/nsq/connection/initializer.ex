@@ -1,6 +1,7 @@
 defmodule NSQ.Connection.Initializer do
   alias NSQ.Connection, as: C
   alias NSQ.Connection.MessageHandling
+  alias NSQ.Connection.Buffer
   alias NSQ.ConnInfo
   import NSQ.Protocol
   require Logger
@@ -22,12 +23,14 @@ defmodule NSQ.Connection.Initializer do
 
       case Socket.TCP.connect(host, port, socket_opts) do
         {:ok, socket} ->
+          state.reader |> Buffer.setup_socket(socket, state.config.read_timeout)
+          state.writer |> Buffer.setup_socket(socket, state.config.read_timeout)
           state =
             %{state | socket: socket}
             |> do_handshake!
             |> start_receiving_messages!
             |> reset_connects
-          {:ok, state}
+          {:ok, %{state | connected: true}}
         {:error, reason} ->
           if length(state.config.nsqlookupds) > 0 do
             Logger.warn "(#{inspect self}) connect failed; #{reason}; discovery loop should respawn"
@@ -73,9 +76,9 @@ defmodule NSQ.Connection.Initializer do
 
 
   @spec send_magic_v2(C.state) :: :ok
-  defp send_magic_v2(%{socket: socket}) do
+  defp send_magic_v2(conn_state) do
     Logger.debug("(#{inspect self}) sending magic v2...")
-    socket |> Socket.Stream.send!(encode(:magic_v2))
+    conn_state.writer |> Buffer.send!(encode(:magic_v2))
   end
 
 
@@ -83,7 +86,7 @@ defmodule NSQ.Connection.Initializer do
   defp identify(conn_state) do
     Logger.debug("(#{inspect self}) identifying...")
     identify_obj = encode({:identify, identify_props(conn_state)})
-    conn_state.socket |> Socket.Stream.send!(identify_obj)
+    conn_state.writer |> Buffer.send!(identify_obj)
     {:response, json} = recv_nsq_response(conn_state)
     {:ok, _conn_state} = update_from_identify_response(conn_state, json)
   end
@@ -100,7 +103,8 @@ defmodule NSQ.Connection.Initializer do
       output_buffer_timeout: config.output_buffer_timeout,
       tls_v1: config.tls_v1,
       snappy: false,
-      deflate: false,
+      deflate: config.deflate,
+      deflate_level: config.deflate_level,
       sample_rate: 0,
       user_agent: config.user_agent || @user_agent,
       msg_timeout: config.msg_timeout
@@ -108,9 +112,29 @@ defmodule NSQ.Connection.Initializer do
   end
 
 
+  def inflate(data) do
+    z = :zlib.open
+    :ok = z |> :zlib.inflateInit(-15)
+    inflated = z |> :zlib.inflateChunk(data)
+    Logger.warn "inflated chunk?"
+    Logger.warn inspect inflated
+    :ok = z |> :zlib.inflateEnd
+    :ok = z |> :zlib.close
+    inflated
+  end
+
+
   @spec update_from_identify_response(C.state, binary) :: {:ok, C.state}
   defp update_from_identify_response(conn_state, json) do
     {:ok, parsed} = Poison.decode(json)
+
+    # If compression is enabled, we expect to receive a compressed "OK"
+    # immediately.
+    conn_state.reader |> Buffer.setup_compression(parsed, conn_state.config)
+    conn_state.writer |> Buffer.setup_compression(parsed, conn_state.config)
+    if parsed["deflate"] == true || parsed["snappy"] == true do
+      conn_state |> wait_for_ok!
+    end
 
     # respect negotiated max_rdy_count
     if parsed["max_rdy_count"] do
@@ -124,6 +148,7 @@ defmodule NSQ.Connection.Initializer do
       conn_state = %{conn_state | msg_timeout: conn_state.config.msg_timeout}
     end
 
+    # wrap our socket with SSL if TLS is enabled
     if parsed["tls_v1"] == true do
       socket = Socket.SSL.connect! conn_state.socket, [
         cacertfile: conn_state.config.tls_cert,
@@ -132,12 +157,14 @@ defmodule NSQ.Connection.Initializer do
         verify: ssl_verify_atom(conn_state.config),
       ]
       conn_state = %{conn_state | socket: socket}
-      socket |> wait_for_ok(conn_state.config.read_timeout)
+      conn_state.reader |> Buffer.setup_socket(socket, conn_state.config.read_timeout)
+      conn_state.writer |> Buffer.setup_socket(socket, conn_state.config.read_timeout)
+      conn_state |> wait_for_ok!
     end
 
     if parsed["auth_required"] == true do
       auth_cmd = encode({:auth, conn_state.config.auth_secret})
-      conn_state.socket |> Socket.Stream.send!(auth_cmd)
+      conn_state.writer |> Buffer.send!(auth_cmd)
       {:response, json} = recv_nsq_response(conn_state)
       Logger.debug(json)
     end
@@ -156,33 +183,26 @@ defmodule NSQ.Connection.Initializer do
 
 
   @spec subscribe(C.state) :: {:ok, binary}
-  defp subscribe(%{socket: socket, topic: topic, channel: channel} = conn_state) do
+  defp subscribe(%{topic: topic, channel: channel} = conn_state) do
     Logger.debug "(#{inspect self}) subscribe to #{topic} #{channel}"
-    socket |> Socket.Stream.send!(encode({:sub, topic, channel}))
+    conn_state.writer |> Buffer.send!(encode({:sub, topic, channel}))
 
     Logger.debug "(#{inspect self}) wait for subscription acknowledgment"
-    socket |> wait_for_ok(conn_state.config.read_timeout)
+    conn_state |> wait_for_ok!
   end
 
 
   @spec recv_nsq_response(C.state) :: {:response, binary}
   defp recv_nsq_response(conn_state) do
-    {:ok, <<msg_size :: size(32)>>} =
-      conn_state.socket |>
-      Socket.Stream.recv(4, timeout: conn_state.config.read_timeout)
-
-    {:ok, raw_msg_data} =
-      conn_state.socket |>
-      Socket.Stream.recv(msg_size, timeout: conn_state.config.read_timeout)
-
+    <<msg_size :: size(32)>> = conn_state.reader |> Buffer.recv!(4)
+    raw_msg_data = conn_state.reader |> Buffer.recv!(msg_size)
     {:response, _response} = decode(raw_msg_data)
   end
 
 
-  defp wait_for_ok(socket, timeout) do
+  defp wait_for_ok!(state) do
     expected = ok_msg
-    {:ok, ^expected} =
-      socket |> Socket.Stream.recv(byte_size(expected), timeout: timeout)
+    ^expected = state.reader |> Buffer.recv!(byte_size(expected))
   end
 
 
@@ -210,12 +230,8 @@ defmodule NSQ.Connection.Initializer do
 
 
   @spec start_receiving_messages(C.state) :: {:ok, C.state}
-  defp start_receiving_messages(%{socket: socket} = state) do
-    reader_pid = spawn_link(
-      MessageHandling,
-      :recv_nsq_messages,
-      [socket, self, state.config.read_timeout]
-    )
+  defp start_receiving_messages(state) do
+    reader_pid = spawn_link(MessageHandling, :recv_nsq_messages, [state, self])
     state = %{state | reader_pid: reader_pid}
     GenServer.cast(self, :flush_cmd_queue)
     {:ok, state}
