@@ -26,7 +26,7 @@ See these resources for more info on building client libraries:
 - [x] Include Procfile for running nsqd/nsqlookupd for tests
 - [x] Graceful connection closing
 - [x] TLS support
-- [ ] Auth support
+- [x] Auth support
 - [ ] Deflate support
 - [ ] Snappy support
 - [x] Delegates

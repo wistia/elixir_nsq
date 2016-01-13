@@ -135,6 +135,13 @@ defmodule NSQ.Connection.Initializer do
       socket |> wait_for_ok(conn_state.config.read_timeout)
     end
 
+    if parsed["auth_required"] == true do
+      auth_cmd = encode({:auth, conn_state.config.auth_secret})
+      conn_state.socket |> Socket.Stream.send!(auth_cmd)
+      {:response, json} = recv_nsq_response(conn_state)
+      Logger.debug(json)
+    end
+
     {:ok, conn_state}
   end
 

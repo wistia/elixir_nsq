@@ -36,6 +36,9 @@ defmodule ElixirNsq.Mixfile do
 
       # testing
       {:secure_random, "~> 0.2", only: :test},
+
+      # Small HTTP server for running tests
+      {:http_server, github: "MaxPower15/http_server", tag: "function-response", only: :test},
     ]
   end
 end

@@ -107,7 +107,7 @@ defmodule NSQ.Config do
     msg_timeout: 60 * @seconds,
 
     # secret for nsqd authentication (requires nsqd 0.2.29+)
-    auth_secret: nil,
+    auth_secret: "",
 
     # function or module to deal with messages
     message_handler: nil,
