@@ -77,7 +77,8 @@ defmodule NSQ.Connection.Buffer do
 
 
   def recv(buffer, size) do
-    buffer |> GenServer.call({:recv, size})
+    result = buffer |> GenServer.call({:recv, size}, 60_000)
+    result
   end
   def recv!(buffer, size) do
     {:ok, data} = buffer |> recv(size)

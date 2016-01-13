@@ -22,7 +22,6 @@ defmodule NSQ.Connection.MessageHandling do
         # Got a message! Decode it and let the connection know. We just
         # received data on the socket to get the size of this message, so if we
         # timeout in here, that's probably indicative of a problem.
-        Logger.warn "getting msg size #{msg_size}"
         raw_msg_data = conn_state.reader |> Buffer.recv!(msg_size)
         decoded = decode(raw_msg_data)
         GenServer.cast(conn, {:nsq_msg, decoded})

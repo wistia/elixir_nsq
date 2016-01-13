@@ -638,12 +638,12 @@ defmodule NSQ.ConsumerTest do
       end
     })
 
-    # HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
-    # assert_receive(:handled, 2000)
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
+    assert_receive(:handled, 2000)
 
-    # HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
-    # assert_receive(:handled, 2000)
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
+    assert_receive(:handled, 2000)
 
-    :timer.sleep 6000
+    # :timer.sleep 6000
   end
 end
