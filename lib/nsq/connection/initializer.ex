@@ -128,14 +128,6 @@ defmodule NSQ.Connection.Initializer do
   defp update_from_identify_response(conn_state, json) do
     {:ok, parsed} = Poison.decode(json)
 
-    # If compression is enabled, we expect to receive a compressed "OK"
-    # immediately.
-    conn_state.reader |> Buffer.setup_compression(parsed, conn_state.config)
-    conn_state.writer |> Buffer.setup_compression(parsed, conn_state.config)
-    if parsed["deflate"] == true || parsed["snappy"] == true do
-      conn_state |> wait_for_ok!
-    end
-
     # respect negotiated max_rdy_count
     if parsed["max_rdy_count"] do
       ConnInfo.update conn_state, %{max_rdy: parsed["max_rdy_count"]}
@@ -150,6 +142,7 @@ defmodule NSQ.Connection.Initializer do
 
     # wrap our socket with SSL if TLS is enabled
     if parsed["tls_v1"] == true do
+      Logger.debug "Upgrading to TLS..."
       socket = Socket.SSL.connect! conn_state.socket, [
         cacertfile: conn_state.config.tls_cert,
         keyfile: conn_state.config.tls_key,
@@ -162,7 +155,16 @@ defmodule NSQ.Connection.Initializer do
       conn_state |> wait_for_ok!
     end
 
+    # If compression is enabled, we expect to receive a compressed "OK"
+    # immediately.
+    conn_state.reader |> Buffer.setup_compression(parsed, conn_state.config)
+    conn_state.writer |> Buffer.setup_compression(parsed, conn_state.config)
+    if parsed["deflate"] == true || parsed["snappy"] == true do
+      conn_state |> wait_for_ok!
+    end
+
     if parsed["auth_required"] == true do
+      Logger.debug "sending AUTH"
       auth_cmd = encode({:auth, conn_state.config.auth_secret})
       conn_state.writer |> Buffer.send!(auth_cmd)
       {:response, json} = recv_nsq_response(conn_state)
