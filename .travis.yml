@@ -11,6 +11,8 @@ before_install:
   - sudo dpkg -i nsq_0.3.5_amd64.deb
 
 before_script:
+  - MIX_ENV=test mix deps.get
+  - MIX_ENV=test mix compile
   - MIX_ENV=test mix run --no-halt -e "NSQ.Test.AuthServer.start(6790)"
   - nsqd --tcp-address=127.0.0.1:6750 --http-address=127.0.0.1:6751 --worker-id=512 --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:6770 --lookupd-tcp-address=127.0.0.1:6780 &
   - nsqd --tcp-address=127.0.0.1:6760 --http-address=127.0.0.1:6761 --worker-id=513 --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:6770 --lookupd-tcp-address=127.0.0.1:6780 &
