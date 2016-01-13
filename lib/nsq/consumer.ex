@@ -242,7 +242,7 @@ defmodule NSQ.Consumer do
   def handle_call(:starved, _from, cons_state) do
     is_starved =
       ConnInfo.all(cons_state.conn_info_pid)
-      |> Enum.any?(fn({conn_id, info}) ->
+      |> Enum.any?(fn({_conn_id, info}) ->
         info.messages_in_flight > 0 &&
           info.messages_in_flight >= info.last_rdy * 0.85
       end)
