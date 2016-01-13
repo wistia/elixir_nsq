@@ -36,11 +36,12 @@ defmodule NSQ.Connection.Buffer do
           %{state | compression: :plaintext}
         {:deflate, level} ->
           Logger.debug("Using DEFLATE level #{level} to compress and decompress data")
-          %{state |
+          state = %{state |
             compression: :deflate,
             zin: open_zin!,
-            zout: open_zout!(level)
+            zout: open_zout!(level),
           }
+          state |> convert_plaintext_buffer(:deflate)
         :snappy ->
           raise "snappy isn't implemented yet!"
       end
@@ -139,7 +140,7 @@ defmodule NSQ.Connection.Buffer do
 
   @doc """
   Grabs as much data from the socket as is available, combines it with any
-  compresse data from previous buffering, decompresses it, and stores the
+  compressed data from previous buffering, decompresses it, and stores the
   output in several state properties.
   """
   defp buffer(state) do
@@ -150,6 +151,24 @@ defmodule NSQ.Connection.Buffer do
       {:error, error} -> {:error, error}
       {:ok, raw_chunk} -> {:ok, state |> add_raw_chunk_to_buffer!(raw_chunk)}
     end
+  end
+
+
+  defp convert_plaintext_buffer(state, compressor) do
+    case compressor do
+      :deflate ->
+        plaintext_data = state.buffered_data
+        state
+        |> reset_buffer!
+        |> add_raw_chunk_to_buffer!(plaintext_data)
+      :snappy ->
+        raise "Snappy isn't implemented yet!"
+    end
+  end
+
+
+  defp reset_buffer!(state) do
+    %{state | buffered_data: "", buffered_data_size: 0, compressed_data: ""}
   end
 
 
@@ -175,7 +194,7 @@ defmodule NSQ.Connection.Buffer do
 
     combined_buffer = state.buffered_data <> decompressed
 
-    state = %{state |
+    %{state |
       buffered_data: combined_buffer,
       buffered_data_size: byte_size(combined_buffer),
       compressed_data: compressed
