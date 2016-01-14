@@ -21,6 +21,7 @@ defmodule NSQ.Message do
     :connection,
     :consumer,
     :config,
+    :parent,
     :processing_pid,
     :event_manager_pid,
     :msg_timeout,
@@ -69,9 +70,9 @@ defmodule NSQ.Message do
   def process(message) do
     # Kick off processing in a separate process, so we can kill it if it takes
     # too long.
-    parent = self
-    pid = spawn_link fn ->
-      process_without_timeout(parent, message)
+    message = %{message | parent: self}
+    {:ok, pid} = Task.start_link fn ->
+      process_without_timeout(message)
     end
     message = %{message | processing_pid: pid}
 
@@ -133,15 +134,16 @@ defmodule NSQ.Message do
   message until the process finishes.
   """
   def touch(message) do
-    Logger.debug("(#{message.connection}) touch msg ID #{message.id}")
+    Logger.debug("(#{inspect message.connection}) touch msg ID #{message.id}")
     message |> Buffer.send!(encode({:touch, message.id}))
+    send(message.parent, {:message_touch, message})
   end
 
 
   # ------------------------------------------------------- #
   # Private Functions                                       #
   # ------------------------------------------------------- #
-  defp process_without_timeout(parent, message) do
+  defp process_without_timeout(message) do
     ret_val =
       if should_fail_message?(message) do
         :fail |> respond_to_nsq(message)
@@ -149,7 +151,7 @@ defmodule NSQ.Message do
         run_handler_safely(message) |> respond_to_nsq(message)
       end
 
-    send parent, {:message_done, message, ret_val}
+    send message.parent, {:message_done, message, ret_val}
   end
 
 
@@ -204,9 +206,9 @@ defmodule NSQ.Message do
   defp wait_for_msg_done(message) do
     receive do
       {:message_done, _msg, ret_val} ->
-        unlink_and_exit(message.processing_pid)
         {:ok, ret_val}
       {:message_touch, _msg} ->
+        Logger.debug "Msg #{message.id} received TOUCH, starting a new wait..."
         # If NSQ.Message.touch(msg) is called, we will send TOUCH msg_id to
         # NSQD, but we also need to reset our timeout on the client to avoid
         # processes that hang forever.
@@ -216,7 +218,8 @@ defmodule NSQ.Message do
         # If we've waited this long, we can assume NSQD will requeue the
         # message on its own.
         Logger.warn "Msg #{message.id} timed out, quit processing it and expect nsqd to requeue"
-        unlink_and_exit(message.processing_pid)
+        GenEvent.notify(message.event_manager_pid, {:message_requeued, message})
+        unlink_and_exit(message.parent)
         {:ok, :req}
     end
   end
@@ -224,7 +227,7 @@ defmodule NSQ.Message do
 
   defp unlink_and_exit(pid) do
     Process.unlink(pid)
-    Process.exit(pid, :normal)
+    Process.exit(pid, :kill)
   end
 
 

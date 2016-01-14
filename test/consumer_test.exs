@@ -33,7 +33,7 @@ defmodule NSQ.ConsumerTest do
 
   test "msg_timeout" do
     test_pid = self
-    {:ok, _consumer} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+    {:ok, consumer} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
       msg_timeout: 1000,
       message_handler: fn(body, _msg) ->
@@ -47,11 +47,42 @@ defmodule NSQ.ConsumerTest do
       end
     })
 
+    NSQ.Consumer.event_manager(consumer)
+      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self)
+
     HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "hello"])
-    assert_receive :handled, 2000
+    assert_receive {:message_finished, _}, 2000
 
     HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "too_slow"])
-    refute_receive :handled, 1500
+    assert_receive {:message_requeued, _}, 2000
+  end
+
+  test "NSQ.Message.touch extends timeout" do
+    test_pid = self
+    {:ok, consumer} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+      nsqds: [{"127.0.0.1", 6750}],
+      msg_timeout: 1000,
+      message_handler: fn(_body, msg) ->
+        Task.start_link fn ->
+          :timer.sleep 900
+          NSQ.Message.touch(msg)
+        end
+        :timer.sleep(1500)
+        send(test_pid, :handled)
+        :ok
+      end
+    })
+
+    NSQ.Consumer.event_manager(consumer)
+      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self)
+
+    HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "hello"])
+
+    # Without touch, this message would fail after 1 second. So we test that
+    # it takes longer than 1 second but succeeds.
+    refute_receive({:message_requeued, _}, 1200)
+    refute_received({:message_finished, _})
+    assert_receive({:message_finished, _}, 1000)
   end
 
   test "we don't go over max_in_flight, and keep processing after saturation" do
