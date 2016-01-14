@@ -1,15 +1,16 @@
-# elixir_nsq - UNDER CONSTRUCTION
+# elixir_nsq
 
 [![Build Status](https://travis-ci.org/wistia/elixir_nsq.svg?branch=master)](https://travis-ci.org/wistia/elixir_nsq)
 
-The goal of this project is to create a production-ready Elixir client library
-for NSQ. It is currently in a phase of rapid prototyping, and is _not ready_
-for production yet. When that time comes, the readme will reflect it.
+`elixir_nsq` is a client library for NSQ. Use it in your Elixir or Erlang
+applications to handle messages asynchronously. This library seeks to be
+complete, well-tested, and easy to use.
 
-See these resources for more info on building client libraries:
+This library used [go-nsq](https://github.com/nsqio/go-nsq) and
+[pynsq](https://github.com/nsqio/pynsq) for reference, but is structured to
+better fit common Elixir workflows.
 
-- [http://nsq.io/clients/building_client_libraries.html](http://nsq.io/clients/building_client_libraries.html)
-- [http://nsq.io/clients/tcp_protocol_spec.html](http://nsq.io/clients/tcp_protocol_spec.html)
+To use this, you will need to have [NSQ](http://nsq.io/).
 
 ### TODO:
 
@@ -17,6 +18,7 @@ See these resources for more info on building client libraries:
 - [ ] Respect config.read_timeout in Buffer.recv
 - [ ] Only open zin/zout if a buffer is going to use it
 - [ ] Implement Enumerable for Buffer so we can use it like a stream
+- [ ] Make a hex package
 
 ## Publish Messages
 
@@ -187,3 +189,9 @@ mix test
 Note that some tests intentionally cause processes to exit, so you might see
 some error logging as part of the tests. As long as they're still passing, that
 is considered normal behavior.
+
+
+## Known Issues
+
+- Snappy cannot be supported because existing NIFs cannot correctly decompress
+  the nsqd stream. I believe they need support for skipping the checksum.
