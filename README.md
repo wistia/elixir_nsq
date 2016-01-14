@@ -12,14 +12,6 @@ better fit common Elixir workflows.
 
 To use this, you will need to have [NSQ](http://nsq.io/).
 
-### TODO:
-
-- [ ] Test Message.touch
-- [ ] Respect config.read_timeout in Buffer.recv
-- [ ] Only open zin/zout if a buffer is going to use it
-- [ ] Implement Enumerable for Buffer so we can use it like a stream
-- [ ] Make a hex package
-
 ## Publish Messages
 
 ```elixir
