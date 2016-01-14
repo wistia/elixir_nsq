@@ -85,10 +85,10 @@ defmodule NSQ.Connection do
 
   @spec init(state) :: {:ok, state}
   def init(conn_state) do
-    {:ok, reader} = NSQ.Connection.Buffer.start_link
+    {:ok, reader} = NSQ.Connection.Buffer.start_link(:reader)
     conn_state = %{conn_state | reader: reader}
 
-    {:ok, writer} = NSQ.Connection.Buffer.start_link
+    {:ok, writer} = NSQ.Connection.Buffer.start_link(:writer)
     conn_state = %{conn_state | writer: writer}
 
     {:ok, msg_sup_pid} = NSQ.Message.Supervisor.start_link

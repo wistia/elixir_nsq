@@ -8,18 +8,19 @@ defmodule NSQ.Connection.Buffer do
     compressed_data: "",
     compression: :plaintext,
     socket: nil,
+    timeout: nil,
+    type: nil,
     zin: nil,
     zout: nil,
-    timeout: nil,
   }
 
-  def start_link(opts \\ []) do
-    {:ok, _pid} = GenServer.start_link(__MODULE__, :ok, opts)
+  def start_link(type, opts \\ []) do
+    {:ok, _pid} = GenServer.start_link(__MODULE__, type, opts)
   end
 
 
-  def init(:ok) do
-    {:ok, @initial_state}
+  def init(type) do
+    {:ok, %{@initial_state | type: type}}
   end
 
 
@@ -36,12 +37,13 @@ defmodule NSQ.Connection.Buffer do
           %{state | compression: :plaintext}
         {:deflate, level} ->
           Logger.debug("Using DEFLATE level #{level} to compress and decompress data")
-          state = %{state |
-            compression: :deflate,
-            zin: open_zin!,
-            zout: open_zout!(level),
-          }
-          state |> convert_plaintext_buffer(:deflate)
+          state = %{state | compression: :deflate}
+          case state.type do
+            :reader ->
+              %{state | zin: open_zin!} |> convert_plaintext_buffer(:deflate)
+            :writer ->
+              %{state | zout: open_zout!(level)}
+          end
         :snappy ->
           raise "snappy isn't implemented yet!"
       end
