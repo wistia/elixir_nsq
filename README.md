@@ -40,6 +40,18 @@ NSQ.Producer.close(producer)
 
 ## Quick Start
 
+### Add to mix.exs
+
+```elixir
+defp deps do
+  [{:elixir_nsq, "~> 0.0.1"}]
+end
+
+defp applications do
+  [:logger, :elixir_nsq]
+end
+```
+
 ### Consume Messages
 
 The handler should return `:ok` to finish normally, `:req` to requeue the
