@@ -5,6 +5,8 @@ defmodule ElixirNsq.Mixfile do
     [app: :elixir_nsq,
      version: "0.0.1",
      elixir: "~> 1.1",
+     description: description,
+     package: package,
      build_embedded: Mix.env == :prod,
      start_permanent: Mix.env == :prod,
      deps: deps]
@@ -39,6 +41,24 @@ defmodule ElixirNsq.Mixfile do
 
       # Small HTTP server for running tests
       {:http_server, github: "parroty/http_server", tag: "09ea61f42097483d3e70749be30490004a5df38f", only: :test},
+    ]
+  end
+
+  defp description do
+    """
+    A client library for NSQ, `elixir_nsq` aims to be complete, easy to use,
+    and well tested. Developed at Wistia (http://wistia.com).
+    """
+  end
+
+  defp package do
+    [
+      files: ["lib", "mix.exs", "README*", "readme*", "LICENSE*", "license*"],
+      maintainers: ["Max Schnur (max@wistia.com)"],
+      licenses: ["MIT"],
+      links: %{
+        "GitHub" => "https://github.com/wistia/elixir_nsq"
+      },
     ]
   end
 end
