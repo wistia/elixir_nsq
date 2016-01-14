@@ -13,26 +13,10 @@ See these resources for more info on building client libraries:
 
 ### TODO:
 
-- [x] RDY redistribution tests
-- [x] RDY retry tests
-- [x] Backoff tests
-- [x] Test message processing concurrency
-- [x] Test discovery via nsqlookupd for consumers
-- [x] Test connection failure behavior
-- [x] Set connection's max_rdy from IDENTIFY result
-- [x] Respect configured read_timeout
-- [x] Respect configured write_timeout
-- [x] Handle errors reported by NSQD
-- [x] Include Procfile for running nsqd/nsqlookupd for tests
-- [x] Graceful connection closing
-- [x] TLS support
-- [x] Auth support
-- [x] Deflate support
-- [ ] Snappy support
-- [x] Delegates
-- [x] Test Message TOUCH
-- [x] Remove Connection dependency
-- [x] Implement `NSQ.Consumer.starved?/1`
+- [ ] Test Message.touch
+- [ ] Respect config.read_timeout in Buffer.recv
+- [ ] Only open zin/zout if a buffer is going to use it
+- [ ] Implement Enumerable for Buffer so we can use it like a stream
 
 ## Publish Messages
 
