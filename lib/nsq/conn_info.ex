@@ -120,7 +120,7 @@ defmodule NSQ.ConnInfo do
 
 
   @doc false
-  def update(%{conn_info_pid: agent_pid, parent: parent, nsqd: nsqd} = state, func) do
+  def update(%{conn_info_pid: agent_pid, parent: parent, nsqd: nsqd}, func) do
     update(agent_pid, conn_id(parent, nsqd), func)
   end
 
