@@ -76,16 +76,25 @@ defmodule NSQ.Connection.Buffer do
   end
 
 
-  def recv(buffer, size) do
-    result = buffer |> GenServer.call({:recv, size}, 60_000)
-    result
+  def recv(%{reader: buffer, config: %NSQ.Config{read_timeout: timeout}}, size) do
+    buffer |> recv(size, timeout)
   end
-  def recv!(buffer, size) do
-    {:ok, data} = buffer |> recv(size)
+  def recv(buffer, size, timeout) do
+    buffer |> GenServer.call({:recv, size}, timeout)
+  end
+  def recv!(state, size) do
+    {:ok, data} = state |> recv(size)
+    data
+  end
+  def recv!(buffer, size, timeout) do
+    {:ok, data} = buffer |> recv(size, timeout)
     data
   end
 
 
+  def send!(%{writer: buffer}, data) do
+    buffer |> send!(data)
+  end
   def send!(buffer, data) do
     :ok = buffer |> GenServer.call({:send, data})
   end

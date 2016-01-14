@@ -93,7 +93,7 @@ defmodule NSQ.Message do
   """
   def fin(message) do
     Logger.debug("(#{inspect message.connection}) fin msg ID #{message.id}")
-    message.writer |> Buffer.send!(encode({:fin, message.id}))
+    message |> Buffer.send!(encode({:fin, message.id}))
     GenEvent.notify(message.event_manager_pid, {:message_finished, message})
     GenServer.call(message.consumer, {:start_stop_continue_backoff, :resume})
   end
@@ -122,7 +122,7 @@ defmodule NSQ.Message do
       GenServer.call(message.consumer, {:start_stop_continue_backoff, :continue})
     end
 
-    message.writer |> Buffer.send!(encode({:req, message.id, delay}))
+    message |> Buffer.send!(encode({:req, message.id, delay}))
     GenEvent.notify(message.event_manager_pid, {:message_requeued, message})
   end
 
@@ -134,7 +134,7 @@ defmodule NSQ.Message do
   """
   def touch(message) do
     Logger.debug("(#{message.connection}) touch msg ID #{message.id}")
-    message.writer |> Buffer.send!(encode({:touch, message.id}))
+    message |> Buffer.send!(encode({:touch, message.id}))
   end
 
 

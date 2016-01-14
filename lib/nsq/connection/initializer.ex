@@ -78,7 +78,7 @@ defmodule NSQ.Connection.Initializer do
   @spec send_magic_v2(C.state) :: :ok
   defp send_magic_v2(conn_state) do
     Logger.debug("(#{inspect self}) sending magic v2...")
-    conn_state.writer |> Buffer.send!(encode(:magic_v2))
+    conn_state |> Buffer.send!(encode(:magic_v2))
   end
 
 
@@ -86,7 +86,7 @@ defmodule NSQ.Connection.Initializer do
   defp identify(conn_state) do
     Logger.debug("(#{inspect self}) identifying...")
     identify_obj = encode({:identify, identify_props(conn_state)})
-    conn_state.writer |> Buffer.send!(identify_obj)
+    conn_state |> Buffer.send!(identify_obj)
     {:response, json} = recv_nsq_response(conn_state)
     {:ok, _conn_state} = update_from_identify_response(conn_state, json)
   end
@@ -166,7 +166,7 @@ defmodule NSQ.Connection.Initializer do
     if parsed["auth_required"] == true do
       Logger.debug "sending AUTH"
       auth_cmd = encode({:auth, conn_state.config.auth_secret})
-      conn_state.writer |> Buffer.send!(auth_cmd)
+      conn_state |> Buffer.send!(auth_cmd)
       {:response, json} = recv_nsq_response(conn_state)
       Logger.debug(json)
     end
@@ -187,7 +187,7 @@ defmodule NSQ.Connection.Initializer do
   @spec subscribe(C.state) :: {:ok, binary}
   defp subscribe(%{topic: topic, channel: channel} = conn_state) do
     Logger.debug "(#{inspect self}) subscribe to #{topic} #{channel}"
-    conn_state.writer |> Buffer.send!(encode({:sub, topic, channel}))
+    conn_state |> Buffer.send!(encode({:sub, topic, channel}))
 
     Logger.debug "(#{inspect self}) wait for subscription acknowledgment"
     conn_state |> wait_for_ok!
@@ -196,15 +196,15 @@ defmodule NSQ.Connection.Initializer do
 
   @spec recv_nsq_response(C.state) :: {:response, binary}
   defp recv_nsq_response(conn_state) do
-    <<msg_size :: size(32)>> = conn_state.reader |> Buffer.recv!(4)
-    raw_msg_data = conn_state.reader |> Buffer.recv!(msg_size)
+    <<msg_size :: size(32)>> = conn_state |> Buffer.recv!(4)
+    raw_msg_data = conn_state |> Buffer.recv!(msg_size)
     {:response, _response} = decode(raw_msg_data)
   end
 
 
   defp wait_for_ok!(state) do
     expected = ok_msg
-    ^expected = state.reader |> Buffer.recv!(byte_size(expected))
+    ^expected = state |> Buffer.recv!(byte_size(expected))
   end
 
 

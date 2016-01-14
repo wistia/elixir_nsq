@@ -28,7 +28,7 @@ defmodule NSQ.Connection.Command do
 
   @spec send_data_and_queue_resp(C.state, tuple, {reference, pid}, atom) :: C.state
   def send_data_and_queue_resp(state, cmd, from, kind) do
-    state.writer |> Buffer.send!(encode(cmd))
+    state |> Buffer.send!(encode(cmd))
     if kind == :noresponse do
       state
     else
