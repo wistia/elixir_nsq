@@ -69,13 +69,13 @@ defmodule NSQ.Config do
     sample_rate: 0,
 
     # To set TLS config, use the following options:
-	  #
-	  # tls_v1 - Bool enable TLS negotiation
-	  # tls_root_ca_file - String path to file containing root CA
-	  # tls_insecure_skip_verify - Bool indicates whether this client should verify server certificates
-	  # tls_cert - String path to file containing public key for certificate
-	  # tls_key - String path to file containing private key for certificate
-	  # tls_min_version - String indicating the minimum version of tls acceptable :sslv3, :tlsv1, :"tlsv1.1", :"tlsv1.2"
+    #
+    # tls_v1 - Bool enable TLS negotiation
+    # tls_root_ca_file - String path to file containing root CA
+    # tls_insecure_skip_verify - Bool indicates whether this client should verify server certificates
+    # tls_cert - String path to file containing public key for certificate
+    # tls_key - String path to file containing private key for certificate
+    # tls_min_version - String indicating the minimum version of tls acceptable :sslv3, :tlsv1, :"tlsv1.1", :"tlsv1.2"
     tls_v1: false,
     tls_insecure_skip_verify: false,
     tls_cert: nil,
@@ -92,10 +92,10 @@ defmodule NSQ.Config do
     output_buffer_size: 16384,
 
     # Timeout used by nsqd before flushing buffered writes (set to 0 to disable).
-	  #
-	  # WARNING: configuring clients with an extremely low
-	  # (< 25ms) output_buffer_timeout has a significant effect
-	  # on nsqd CPU usage (particularly with > 50 clients connected).
+    #
+    # WARNING: configuring clients with an extremely low
+    # (< 25ms) output_buffer_timeout has a significant effect
+    # on nsqd CPU usage (particularly with > 50 clients connected).
     output_buffer_timeout: 250 * @ms,
 
     # Maximum number of messages to allow in flight (concurrency knob)
