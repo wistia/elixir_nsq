@@ -106,6 +106,11 @@ If you're not using nsqlookupd, you can specify nsqds directly:
 })
 ```
 
+## Configuration
+
+Check https://github.com/wistia/elixir_nsq/blob/master/lib/nsq/config.ex for
+supported config values.
+
 ## Get notified
 
 NSQ.Consumer and NSQ.Producer provide the function `event_manager/1` so that
