@@ -38,7 +38,11 @@ defmodule NSQ.Consumer.Helpers do
   def per_conn_max_in_flight(cons_state) do
     max_in_flight = cons_state.max_in_flight
     conn_count = Connections.count(cons_state)
-    min(max(1, max_in_flight / conn_count), max_in_flight) |> round
+    if conn_count == 0 do
+      0
+    else
+      min(max(1, max_in_flight / conn_count), max_in_flight) |> round
+    end
   end
 
 
