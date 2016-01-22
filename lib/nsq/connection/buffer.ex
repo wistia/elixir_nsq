@@ -163,6 +163,7 @@ defmodule NSQ.Connection.Buffer do
 
     case received do
       {:error, error} -> {:error, error}
+      {:ok, nil} -> {:error, "socket closed"}
       {:ok, raw_chunk} -> {:ok, state |> add_raw_chunk_to_buffer!(raw_chunk)}
     end
   end
