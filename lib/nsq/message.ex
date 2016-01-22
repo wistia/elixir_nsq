@@ -85,7 +85,7 @@ defmodule NSQ.Message do
     send(message.connection, result)
 
     # Nothing more for this process to do.
-    unlink_and_exit(message.parent)
+    Process.exit(self, :normal)
   end
 
 
