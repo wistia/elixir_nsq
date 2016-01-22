@@ -183,6 +183,7 @@ defmodule NSQ.Message do
     rescue
       e ->
         Logger.error "Error running message handler: #{inspect e}"
+        Logger.error inspect System.stacktrace
         {:req, -1, true}
     end
   end
