@@ -83,7 +83,9 @@ defmodule NSQ.Message do
     # messages_in_flight.
     result = {:message_done, message, ret_val}
     send(message.connection, result)
-    result
+
+    # Nothing more for this process to do.
+    unlink_and_exit(message.parent)
   end
 
 
