@@ -3,7 +3,7 @@ defmodule ElixirNsq.Mixfile do
 
   def project do
     [app: :elixir_nsq,
-     version: "1.0.2",
+     version: "1.0.3",
      elixir: "~> 1.1",
      description: description,
      package: package,

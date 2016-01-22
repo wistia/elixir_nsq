@@ -36,7 +36,7 @@ NSQ.Producer.close(producer)
 
 ```elixir
 defp deps do
-  [{:elixir_nsq, "~> 1.0.2"}]
+  [{:elixir_nsq, "~> 1.0.3"}]
 end
 
 defp applications do
