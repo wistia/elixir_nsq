@@ -110,11 +110,6 @@ defmodule NSQ.Message do
   mode, where it stops receiving messages for a fixed duration.
   """
   def req(message, delay \\ -1, backoff \\ false) do
-    if delay > 3600000000000 do
-      Logger.warn "Invalid requeue delay #{delay}. Must be between 0 and 3600000000000. Auto-calculating delay instead."
-      delay = -1
-    end
-
     if delay == -1 do
       delay = calculate_delay(
         message.attempts, message.config.max_requeue_delay
@@ -122,6 +117,11 @@ defmodule NSQ.Message do
       Logger.debug("(#{inspect message.connection}) requeue msg ID #{message.id}, delay #{delay} (auto-calculated with attempts #{message.attempts}), backoff #{backoff}")
     else
       Logger.debug("(#{inspect message.connection}) requeue msg ID #{message.id}, delay #{delay}, backoff #{backoff}")
+    end
+
+    if delay > message.config.max_requeue_delay do
+      Logger.warn "Invalid requeue delay #{delay}. Must be between 0 and #{message.config.max_requeue_delay}. Sending with max delay #{message.config.max_requeue_delay} instead."
+      delay = message.config.max_requeue_delay
     end
 
     if backoff do
