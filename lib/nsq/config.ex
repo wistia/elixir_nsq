@@ -121,7 +121,7 @@ defmodule NSQ.Config do
     write_timeout: {100 * @ms, 5 * @minutes},
     lookupd_poll_interval: {10 * @ms, 5 * @minutes},
     lookupd_poll_jitter: {0, 1},
-    max_requeue_delay: {0, 60 * @minutes},
+    max_requeue_delay: {0, :infinity},
     max_backoff_duration: {0, 60 * @minutes},
     backoff_multiplier: {0, 60 * @minutes},
     max_attempts: {0, 65535},
