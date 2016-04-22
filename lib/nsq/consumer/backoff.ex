@@ -20,6 +20,9 @@ defmodule NSQ.Consumer.Backoff do
       cons_state |> update_backoff_counter(backoff_signal)
 
     cond do
+      cons_state.config.max_backoff_duration <= 0 ->
+        # Never backoff if max_backoff_duration is <= 0
+        {:ok, cons_state}
       cons_state.backoff_counter == 0 && backoff_updated ->
         {:ok, _state} = exit_backoff(cons, cons_state)
       cons_state.backoff_counter > 0 ->
