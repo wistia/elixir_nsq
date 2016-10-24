@@ -8,7 +8,7 @@ defmodule NSQ.ConsumerTest do
     end
   end
 
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
   doctest NSQ.Consumer
   alias NSQ.Consumer, as: Cons
   alias NSQ.Consumer.Helpers, as: H
@@ -699,5 +699,23 @@ defmodule NSQ.ConsumerTest do
 
     HTTP.post("http://127.0.0.1:6766/put?topic=#{@test_topic}", [body: "HTTP message"])
     assert_receive(:handled, 2000)
+  end
+
+
+  test "stop_connections actually stops connections, without throwing an error" do
+    {:ok, cons_sup_pid} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
+      msg_timeout: 1000,
+      nsqds: [{"127.0.0.1", 6750}],
+      message_handler: fn(body, msg) -> :ok end
+    })
+
+    consumer = NSQ.Consumer.get(cons_sup_pid)
+    state = NSQ.Consumer.get_state(consumer)
+    connections = NSQ.Consumer.Connections.get(consumer)
+
+    assert ConnInfo.all(state.conn_info_pid) != %{}
+    NSQ.Consumer.Connections.stop_connections(connections, consumer, state)
+    assert ConnInfo.all(state.conn_info_pid) == %{}
+    assert NSQ.Consumer.Connections.get(consumer) == []
   end
 end
