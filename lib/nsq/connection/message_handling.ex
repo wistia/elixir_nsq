@@ -24,7 +24,7 @@ defmodule NSQ.Connection.MessageHandling do
         # timeout in here, that's probably indicative of a problem.
         raw_msg_data = conn_state |> Buffer.recv!(msg_size)
         decoded = decode(raw_msg_data)
-        GenServer.cast(conn, {:nsq_msg, decoded})
+        :ok = GenServer.call(conn, {:nsq_msg, decoded})
         conn_state |> recv_nsq_messages(conn)
     end
   end

@@ -129,10 +129,10 @@ defmodule NSQ.Connection do
   end
 
 
-  @spec handle_cast({:nsq_msg, binary}, state) :: {:noreply, state}
-  def handle_cast({:nsq_msg, msg}, state) do
+  @spec handle_call({:nsq_msg, binary}, {pid, reference}, state) :: {:reply, :ok, state}
+  def handle_call({:nsq_msg, msg}, _from, state) do
     {:ok, state} = MessageHandling.handle_nsq_message(msg, state)
-    {:noreply, state}
+    {:reply, :ok, state}
   end
 
 
