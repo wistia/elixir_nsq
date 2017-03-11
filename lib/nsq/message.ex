@@ -37,7 +37,7 @@ defmodule NSQ.Message do
 
   def init(message) do
     # Process the message asynchronously after init.
-    GenServer.cast(self, :process)
+    GenServer.cast(self(), :process)
     {:ok, message}
   end
 
@@ -70,7 +70,7 @@ defmodule NSQ.Message do
   def process(message) do
     # Kick off processing in a separate process, so we can kill it if it takes
     # too long.
-    message = %{message | parent: self}
+    message = %{message | parent: self()}
     {:ok, pid} = Task.start_link fn ->
       process_without_timeout(message)
     end
@@ -85,7 +85,7 @@ defmodule NSQ.Message do
     send(message.connection, result)
 
     # Nothing more for this process to do.
-    Process.exit(self, :normal)
+    Process.exit(self(), :normal)
   end
 
 
@@ -253,7 +253,7 @@ defmodule NSQ.Message do
 
   defp calculate_delay(attempts, max_requeue_delay) do
     exponential_backoff = :math.pow(2, attempts) * 1000
-    jitter = round(0.3 * :random.uniform * exponential_backoff)
+    jitter = round(0.3 * :rand.uniform * exponential_backoff)
     min(
       exponential_backoff + jitter,
       max_requeue_delay

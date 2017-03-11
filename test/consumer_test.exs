@@ -20,7 +20,6 @@ defmodule NSQ.ConsumerTest do
 
   @test_topic "__nsq_consumer_test_topic__"
   @test_channel1 "__nsq_consumer_test_channel1__"
-  @test_channel2 "__nsq_consumer_test_channel2__"
 
   setup do
     Logger.configure(level: :warn)
@@ -32,7 +31,7 @@ defmodule NSQ.ConsumerTest do
   end
 
   test "msg_timeout" do
-    test_pid = self
+    test_pid = self()
     {:ok, consumer} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
       msg_timeout: 1000,
@@ -48,7 +47,7 @@ defmodule NSQ.ConsumerTest do
     })
 
     NSQ.Consumer.event_manager(consumer)
-      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self)
+      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self())
 
     HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "hello"])
     assert_receive {:message_finished, _}, 2000
@@ -58,7 +57,7 @@ defmodule NSQ.ConsumerTest do
   end
 
   test "NSQ.Message.touch extends timeout" do
-    test_pid = self
+    test_pid = self()
     {:ok, consumer} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
       msg_timeout: 1000,
@@ -74,7 +73,7 @@ defmodule NSQ.ConsumerTest do
     })
 
     NSQ.Consumer.event_manager(consumer)
-      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self)
+      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self())
 
     HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "hello"])
 
@@ -86,7 +85,7 @@ defmodule NSQ.ConsumerTest do
   end
 
   test "we don't go over max_in_flight, and keep processing after saturation" do
-    test_pid = self
+    test_pid = self()
     {:ok, consumer} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}, {"127.0.0.1", 6760}],
       max_in_flight: 4,
@@ -120,7 +119,7 @@ defmodule NSQ.ConsumerTest do
   end
 
   test "closing the connection waits for outstanding messages and cleanly exits" do
-    test_pid = self
+    test_pid = self()
     {:ok, consumer} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
       message_handler: fn(body, _msg) ->
@@ -148,7 +147,7 @@ defmodule NSQ.ConsumerTest do
   end
 
   test "notifies the event manager of relevant events" do
-    test_pid = self
+    test_pid = self()
     {:ok, consumer} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
       message_handler: fn(_body, _msg) ->
@@ -158,7 +157,7 @@ defmodule NSQ.ConsumerTest do
     })
 
     NSQ.Consumer.event_manager(consumer)
-      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self)
+      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self())
 
     HTTP.post("http://127.0.0.1:6751/put?topic=#{@test_topic}", [body: "HTTP message"])
     assert_receive(:handled, 2000)
@@ -184,7 +183,7 @@ defmodule NSQ.ConsumerTest do
     })
 
     NSQ.Consumer.event_manager(consumer)
-      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self)
+      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self())
 
     [info] = NSQ.Consumer.conn_info(consumer) |> Map.values
     previous_timestamp = info.last_msg_timestamp
@@ -220,7 +219,7 @@ defmodule NSQ.ConsumerTest do
   end
 
   test "a connection is terminated, cleaned up, and restarted when the tcp connection closes" do
-    test_pid = self
+    test_pid = self()
     {:ok, cons_sup_pid} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       lookupd_poll_interval: 500,
       nsqds: [{"127.0.0.1", 6750}],
@@ -261,7 +260,7 @@ defmodule NSQ.ConsumerTest do
   end
 
   test "establishes a connection to NSQ and processes messages" do
-    test_pid = self
+    test_pid = self()
     NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
       message_handler: fn(body, msg) ->
@@ -280,7 +279,7 @@ defmodule NSQ.ConsumerTest do
   end
 
   test "discovery via nsqlookupd" do
-    test_pid = self
+    test_pid = self()
     {:ok, _} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       lookupd_poll_interval: 500,
       nsqlookupds: ["127.0.0.1:6771", "127.0.0.1:6781"],
@@ -300,7 +299,7 @@ defmodule NSQ.ConsumerTest do
   end
 
   test "#start_link lives when given a bad address and not able to reconnect" do
-    test_pid = self
+    test_pid = self()
     Process.flag(:trap_exit, true)
     {:ok, consumer} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 7777}],
@@ -318,7 +317,7 @@ defmodule NSQ.ConsumerTest do
 
 
   test "#start_link lives when given a bad address but able to reconnect" do
-    test_pid = self
+    test_pid = self()
     {:ok, consumer} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 7777}],
       max_reconnect_attempts: 2,
@@ -340,7 +339,7 @@ defmodule NSQ.ConsumerTest do
 
 
   test "receives messages from mpub" do
-    test_pid = self
+    test_pid = self()
     NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
       message_handler: fn(body, _msg) ->
@@ -364,7 +363,7 @@ defmodule NSQ.ConsumerTest do
   end
 
   test "processes many messages concurrently" do
-    test_pid = self
+    test_pid = self()
     NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
       message_handler: fn(_body, _msg) ->
@@ -409,7 +408,7 @@ defmodule NSQ.ConsumerTest do
     })
 
     NSQ.Consumer.event_manager(sup_pid)
-      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self)
+      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self())
 
     consumer = Cons.get(sup_pid)
     cons_state = Cons.get_state(consumer)
@@ -489,7 +488,7 @@ defmodule NSQ.ConsumerTest do
     # to send RDY 1. That will trigger a retry, after which we can change the
     # max_in_flight so it succeeds next time.
 
-    test_pid = self
+    test_pid = self()
     {:ok, cons_sup_pid} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
       max_in_flight: 0,
@@ -519,7 +518,7 @@ defmodule NSQ.ConsumerTest do
   end
 
   test "rdy redistribution when number of connections > max in flight" do
-    test_pid = self
+    test_pid = self()
     {:ok, cons_sup_pid} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}, {"127.0.0.1", 6760}],
       rdy_redistribute_interval: 100,
@@ -555,7 +554,7 @@ defmodule NSQ.ConsumerTest do
   end
 
   test "works with tls" do
-    test_pid = self
+    test_pid = self()
     NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
       tls_v1: true,
@@ -581,7 +580,7 @@ defmodule NSQ.ConsumerTest do
 
   unless System.get_env("CI") == "true" do
     test "fails when tls_insecure_skip_verify is false" do
-      test_pid = self
+      test_pid = self()
       NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
         nsqds: [{"127.0.0.1", 6750}],
         tls_v1: true,
@@ -613,7 +612,7 @@ defmodule NSQ.ConsumerTest do
     })
 
     NSQ.Consumer.event_manager(consumer)
-      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self)
+      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self())
 
     # Nothing is in flight, not starved
     assert NSQ.Consumer.starved?(consumer) == false
@@ -636,7 +635,7 @@ defmodule NSQ.ConsumerTest do
   end
 
   test "auth" do
-    test_pid = self
+    test_pid = self()
     NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6765}],
       auth_secret: "abc",
@@ -656,7 +655,7 @@ defmodule NSQ.ConsumerTest do
   end
 
   test "deflate" do
-    test_pid = self
+    test_pid = self()
     NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6750}],
       deflate: true,
@@ -676,7 +675,7 @@ defmodule NSQ.ConsumerTest do
   end
 
   test "deflate + ssl + auth" do
-    test_pid = self
+    test_pid = self()
     NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6765}],
       deflate: true,
@@ -706,7 +705,7 @@ defmodule NSQ.ConsumerTest do
     {:ok, cons_sup_pid} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       msg_timeout: 1000,
       nsqds: [{"127.0.0.1", 6750}],
-      message_handler: fn(body, msg) -> :ok end
+      message_handler: fn(_body, _msg) -> :ok end
     })
 
     consumer = NSQ.Consumer.get(cons_sup_pid)

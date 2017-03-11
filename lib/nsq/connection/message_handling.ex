@@ -106,7 +106,7 @@ defmodule NSQ.Connection.MessageHandling do
     message = NSQ.Message.from_data(data)
     state = received_message(state)
     message = %NSQ.Message{message |
-      connection: self,
+      connection: self(),
       consumer: state.parent,
       reader: state.reader,
       writer: state.writer,
@@ -127,7 +127,7 @@ defmodule NSQ.Connection.MessageHandling do
       %{info |
         rdy_count: info.rdy_count - 1,
         messages_in_flight: info.messages_in_flight + 1,
-        last_msg_timestamp: now
+        last_msg_timestamp: now()
       }
     end
     state

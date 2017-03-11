@@ -40,7 +40,7 @@ defmodule NSQ.Connection.Buffer do
           state = %{state | compression: :deflate}
           case state.type do
             :reader ->
-              %{state | zin: open_zin!} |> convert_plaintext_buffer(:deflate)
+              %{state | zin: open_zin!()} |> convert_plaintext_buffer(:deflate)
             :writer ->
               %{state | zout: open_zout!(level)}
           end

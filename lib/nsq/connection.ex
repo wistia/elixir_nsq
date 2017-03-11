@@ -199,7 +199,7 @@ defmodule NSQ.Connection do
         Logger.error "#{inspect conn}: Timed out waiting for messages to finish. Exiting anyway."
     end
 
-    Process.exit(self, :normal)
+    Process.exit(self(), :normal)
   end
 
   @doc """
