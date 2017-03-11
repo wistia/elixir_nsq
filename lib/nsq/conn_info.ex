@@ -70,9 +70,9 @@ defmodule NSQ.ConnInfo do
     Agent.get agent_pid, fn(data) ->
       conn_map = data[conn_id] || %{}
       if is_list(keys) do
-        Enum.map keys, &Dict.get(conn_map, &1)
+        Enum.map keys, &Map.get(conn_map, &1)
       else
-        Dict.get(conn_map, keys)
+        Map.get(conn_map, keys)
       end
     end
   end
@@ -96,7 +96,7 @@ defmodule NSQ.ConnInfo do
   """
   def update(agent_pid, conn_id, func) when is_pid(agent_pid) and is_function(func) do
     Agent.update agent_pid, fn(data) ->
-      Dict.put(data, conn_id, func.(data[conn_id] || %{}))
+      Map.put(data, conn_id, func.(data[conn_id] || %{}))
     end
   end
 
@@ -107,8 +107,8 @@ defmodule NSQ.ConnInfo do
   """
   def update(agent_pid, conn_id, map) when is_pid(agent_pid) and is_map(map) do
     Agent.update agent_pid, fn(data) ->
-      new_conn_data = Dict.merge(data[conn_id] || %{}, map)
-      Dict.put(data, conn_id, new_conn_data)
+      new_conn_data = Map.merge(data[conn_id] || %{}, map)
+      Map.put(data, conn_id, new_conn_data)
     end
   end
 
@@ -130,7 +130,7 @@ defmodule NSQ.ConnInfo do
   connection is terminated.
   """
   def delete(agent_pid, conn_id) when is_pid(agent_pid) do
-    Agent.update(agent_pid, fn(data) -> Dict.delete(data, conn_id) end)
+    Agent.update(agent_pid, fn(data) -> Map.delete(data, conn_id) end)
   end
 
 
