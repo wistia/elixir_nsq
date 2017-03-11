@@ -196,7 +196,7 @@ defmodule NSQ.Consumer.Connections do
   Not for external use.
   """
   @spec cleanup_connection(pid, C.host_with_port, C.state) :: {:ok, C.state}
-  def cleanup_connection(cons, conn_id, cons_state) do
+  def cleanup_connection(_cons, conn_id, cons_state) do
     # If a connection is terminated normally or non-normally, it will still be
     # listed in the supervision tree. Let's remove it when we clean up.
     Supervisor.delete_child(cons_state.conn_sup_pid, conn_id)

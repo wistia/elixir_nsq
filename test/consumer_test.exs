@@ -20,7 +20,6 @@ defmodule NSQ.ConsumerTest do
 
   @test_topic "__nsq_consumer_test_topic__"
   @test_channel1 "__nsq_consumer_test_channel1__"
-  @test_channel2 "__nsq_consumer_test_channel2__"
 
   setup do
     Logger.configure(level: :warn)
@@ -706,7 +705,7 @@ defmodule NSQ.ConsumerTest do
     {:ok, cons_sup_pid} = NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       msg_timeout: 1000,
       nsqds: [{"127.0.0.1", 6750}],
-      message_handler: fn(body, msg) -> :ok end
+      message_handler: fn(_body, _msg) -> :ok end
     })
 
     consumer = NSQ.Consumer.get(cons_sup_pid)
