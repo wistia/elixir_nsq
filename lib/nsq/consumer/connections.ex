@@ -22,7 +22,7 @@ defmodule NSQ.Consumer.Connections do
       lookupd_poll_interval: poll_interval,
       lookupd_poll_jitter: poll_jitter
     } = cons_state.config
-    delay = poll_interval + round(poll_interval * poll_jitter * :random.uniform)
+    delay = poll_interval + round(poll_interval * poll_jitter * :rand.uniform)
     :timer.sleep(delay)
 
     GenServer.call(cons, :discover_nsqds)

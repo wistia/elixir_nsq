@@ -253,7 +253,7 @@ defmodule NSQ.Message do
 
   defp calculate_delay(attempts, max_requeue_delay) do
     exponential_backoff = :math.pow(2, attempts) * 1000
-    jitter = round(0.3 * :random.uniform * exponential_backoff)
+    jitter = round(0.3 * :rand.uniform * exponential_backoff)
     min(
       exponential_backoff + jitter,
       max_requeue_delay
