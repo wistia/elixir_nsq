@@ -31,7 +31,7 @@ defmodule ElixirNsq.Mixfile do
   defp deps do
     [
       {:poison, "~> 1.5.0"},
-      {:ibrowse, github: "cmullaparthi/ibrowse", tag: "v4.1.2"},
+      {:ibrowse, "~> 4.2"},
       {:httpotion, "~> 2.1.0"},
       {:uuid, "~> 1.1.2"},
       {:socket, ">= 0.3.1 and <= 0.3.5"},
