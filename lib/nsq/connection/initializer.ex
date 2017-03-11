@@ -33,21 +33,21 @@ defmodule NSQ.Connection.Initializer do
           {:ok, %{state | connected: true}}
         {:error, reason} ->
           if length(state.config.nsqlookupds) > 0 do
-            Logger.warn "(#{inspect self}) connect failed; #{reason}; discovery loop should respawn"
+            Logger.warn "(#{inspect self()}) connect failed; #{reason}; discovery loop should respawn"
             {{:error, reason}, %{state | connect_attempts: state.connect_attempts + 1}}
           else
             if state.config.max_reconnect_attempts > 0 do
-              Logger.warn "(#{inspect self}) connect failed; #{reason}; discovery loop should respawn"
+              Logger.warn "(#{inspect self()}) connect failed; #{reason}; discovery loop should respawn"
               {{:error, reason}, %{state | connect_attempts: state.connect_attempts + 1}}
             else
-              Logger.error "(#{inspect self}) connect failed; #{reason}; reconnect turned off; terminating connection"
-              Process.exit(self, :connect_failed)
+              Logger.error "(#{inspect self()}) connect failed; #{reason}; reconnect turned off; terminating connection"
+              Process.exit(self(), :connect_failed)
             end
           end
       end
     else
-      Logger.error "#{inspect self}: Failed to connect; terminating connection"
-      Process.exit(self, :connect_failed)
+      Logger.error "#{inspect self()}: Failed to connect; terminating connection"
+      Process.exit(self(), :connect_failed)
     end
   end
 
@@ -77,14 +77,14 @@ defmodule NSQ.Connection.Initializer do
 
   @spec send_magic_v2(C.state) :: :ok
   defp send_magic_v2(conn_state) do
-    Logger.debug("(#{inspect self}) sending magic v2...")
+    Logger.debug("(#{inspect self()}) sending magic v2...")
     conn_state |> Buffer.send!(encode(:magic_v2))
   end
 
 
   @spec identify(C.state) :: {:ok, binary}
   defp identify(conn_state) do
-    Logger.debug("(#{inspect self}) identifying...")
+    Logger.debug("(#{inspect self()}) identifying...")
     identify_obj = encode({:identify, identify_props(conn_state)})
     conn_state |> Buffer.send!(identify_obj)
     {:response, json} = recv_nsq_response(conn_state)
@@ -186,10 +186,10 @@ defmodule NSQ.Connection.Initializer do
 
   @spec subscribe(C.state) :: {:ok, binary}
   defp subscribe(%{topic: topic, channel: channel} = conn_state) do
-    Logger.debug "(#{inspect self}) subscribe to #{topic} #{channel}"
+    Logger.debug "(#{inspect self()}) subscribe to #{topic} #{channel}"
     conn_state |> Buffer.send!(encode({:sub, topic, channel}))
 
-    Logger.debug "(#{inspect self}) wait for subscription acknowledgment"
+    Logger.debug "(#{inspect self()}) wait for subscription acknowledgment"
     conn_state |> wait_for_ok!
   end
 
@@ -203,7 +203,7 @@ defmodule NSQ.Connection.Initializer do
 
 
   defp wait_for_ok!(state) do
-    expected = ok_msg
+    expected = ok_msg()
     ^expected = state |> Buffer.recv!(byte_size(expected))
   end
 
@@ -233,9 +233,9 @@ defmodule NSQ.Connection.Initializer do
 
   @spec start_receiving_messages(C.state) :: {:ok, C.state}
   defp start_receiving_messages(state) do
-    reader_pid = spawn_link(MessageHandling, :recv_nsq_messages, [state, self])
+    reader_pid = spawn_link(MessageHandling, :recv_nsq_messages, [state, self()])
     state = %{state | reader_pid: reader_pid}
-    GenServer.cast(self, :flush_cmd_queue)
+    GenServer.cast(self(), :flush_cmd_queue)
     {:ok, state}
   end
   defp start_receiving_messages!(state) do

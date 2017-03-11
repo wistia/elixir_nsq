@@ -102,7 +102,7 @@ defmodule NSQ.Producer do
       end
     pro_state = %{pro_state | event_manager_pid: manager}
 
-    {:ok, _pro_state} = connect_to_nsqds(pro_state.config.nsqds, self, pro_state)
+    {:ok, _pro_state} = connect_to_nsqds(pro_state.config.nsqds, self(), pro_state)
   end
 
 

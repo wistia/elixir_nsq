@@ -31,7 +31,7 @@ defmodule NSQ.Consumer.Connections do
 
 
   def close(cons_state) do
-    Logger.info "Closing connections for consumer #{inspect self}"
+    Logger.info "Closing connections for consumer #{inspect self()}"
     connections = get(cons_state)
     Enum.map connections, fn({_, conn_pid}) ->
       Task.start_link(NSQ.Connection, :close, [conn_pid])
@@ -48,7 +48,7 @@ defmodule NSQ.Consumer.Connections do
   def refresh(cons_state) do
     {:ok, cons_state} = delete_dead(cons_state)
     {:ok, cons_state} = reconnect_failed(cons_state)
-    {:ok, cons_state} = discover_nsqds_and_connect(self, cons_state)
+    {:ok, cons_state} = discover_nsqds_and_connect(self(), cons_state)
     {:ok, cons_state}
   end
 
@@ -67,12 +67,12 @@ defmodule NSQ.Consumer.Connections do
   def discover_nsqds_and_connect(cons, cons_state) do
     nsqds = cond do
       length(cons_state.config.nsqlookupds) > 0 ->
-        Logger.debug "(#{inspect self}) Discovering nsqds via nsqlookupds #{inspect cons_state.config.nsqlookupds}"
+        Logger.debug "(#{inspect self()}) Discovering nsqds via nsqlookupds #{inspect cons_state.config.nsqlookupds}"
         cons_state.config.nsqlookupds
         |> NSQ.Lookupd.nsqds_with_topic(cons_state.topic)
 
       length(cons_state.config.nsqds) > 0 ->
-        Logger.debug "(#{inspect self}) Using configured nsqds #{inspect cons_state.config.nsqds}"
+        Logger.debug "(#{inspect self()}) Using configured nsqds #{inspect cons_state.config.nsqds}"
         cons_state.config.nsqds
 
       true ->
@@ -284,7 +284,7 @@ defmodule NSQ.Consumer.Connections do
     if is_integer(active) do
       active
     else
-      Logger.warn "(#{inspect self}) non-integer #{inspect active} returned counting connections, returning 0 instead"
+      Logger.warn "(#{inspect self()}) non-integer #{inspect active} returned counting connections, returning 0 instead"
       0
     end
   end
@@ -322,7 +322,7 @@ defmodule NSQ.Consumer.Connections do
       [last_msg_t, rdy_count] = ConnInfo.fetch(
         cons_state, conn_id, [:last_msg_timestamp, :rdy_count]
       )
-      sec_since_last_msg = now - last_msg_t
+      sec_since_last_msg = now() - last_msg_t
       ms_since_last_msg = sec_since_last_msg * 1000
 
       Logger.debug(

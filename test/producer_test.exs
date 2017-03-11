@@ -40,7 +40,7 @@ defmodule NSQ.ProducerTest do
       @test_topic, %NSQ.Config{nsqds: @configured_nsqds}
     )
 
-    test_pid = self
+    test_pid = self()
     NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: @configured_nsqds,
       message_handler: fn(body, msg) ->
@@ -60,7 +60,7 @@ defmodule NSQ.ProducerTest do
       @test_topic, %NSQ.Config{nsqds: @configured_nsqds}
     )
 
-    test_pid = self
+    test_pid = self()
     {:ok, bodies} = Agent.start_link(fn -> [] end)
     NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: @configured_nsqds,

@@ -176,7 +176,7 @@ defmodule NSQ.Consumer do
 
     cons_state = %{cons_state | max_in_flight: cons_state.config.max_in_flight}
 
-    {:ok, _cons_state} = Connections.discover_nsqds_and_connect(self, cons_state)
+    {:ok, _cons_state} = Connections.discover_nsqds_and_connect(self(), cons_state)
   end
 
 
@@ -187,7 +187,7 @@ defmodule NSQ.Consumer do
   @spec handle_call(:redistribute_rdy, {reference, pid}, cons_state) ::
     {:reply, :ok, cons_state}
   def handle_call(:redistribute_rdy, _from, cons_state) do
-    {:reply, :ok, RDY.redistribute!(self, cons_state)}
+    {:reply, :ok, RDY.redistribute!(self(), cons_state)}
   end
 
 
@@ -218,14 +218,14 @@ defmodule NSQ.Consumer do
   @spec handle_call({:start_stop_continue_backoff, atom}, {reference, pid}, cons_state) ::
     {:reply, :ok, cons_state}
   def handle_call({:start_stop_continue_backoff, backoff_flag}, _from, cons_state) do
-    {:reply, :ok, Backoff.start_stop_continue!(self, backoff_flag, cons_state)}
+    {:reply, :ok, Backoff.start_stop_continue!(self(), backoff_flag, cons_state)}
   end
 
 
   @spec handle_call({:update_rdy, connection, integer}, {reference, pid}, cons_state) ::
     {:reply, :ok, cons_state}
   def handle_call({:update_rdy, conn, count}, _from, cons_state) do
-    {:reply, :ok, RDY.update!(self, conn, count, cons_state)}
+    {:reply, :ok, RDY.update!(self(), conn, count, cons_state)}
   end
 
 
@@ -290,7 +290,7 @@ defmodule NSQ.Consumer do
   """
   @spec handle_cast(:resume, cons_state) :: {:noreply, cons_state}
   def handle_cast(:resume, state) do
-    {:noreply, Backoff.resume!(self, state)}
+    {:noreply, Backoff.resume!(self(), state)}
   end
 
 
@@ -301,8 +301,8 @@ defmodule NSQ.Consumer do
   @spec handle_cast({:maybe_update_rdy, host_with_port}, cons_state) ::
     {:noreply, cons_state}
   def handle_cast({:maybe_update_rdy, {_host, _port} = nsqd}, cons_state) do
-    conn = conn_from_nsqd(self, nsqd, cons_state)
-    {:noreply, RDY.maybe_update!(self, conn, cons_state)}
+    conn = conn_from_nsqd(self(), nsqd, cons_state)
+    {:noreply, RDY.maybe_update!(self(), conn, cons_state)}
   end
 
 
