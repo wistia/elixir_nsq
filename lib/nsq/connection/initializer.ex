@@ -6,7 +6,7 @@ defmodule NSQ.Connection.Initializer do
   import NSQ.Protocol
   require Logger
 
-  @socket_opts [as: :binary, active: false, deliver: :term, packet: :raw]
+  @socket_opts [as: :binary, mode: :passive, packet: :raw]
 
   @project ElixirNsq.Mixfile.project
   @user_agent "#{@project[:app]}/#{@project[:version]}"
@@ -17,7 +17,7 @@ defmodule NSQ.Connection.Initializer do
   def connect(%{nsqd: {host, port}} = state) do
     if should_connect?(state) do
       socket_opts = @socket_opts |> Keyword.merge(
-        send_timeout: state.config.write_timeout,
+        send: [{:timeout, state.config.write_timeout}],
         timeout: state.config.dial_timeout,
       )
 

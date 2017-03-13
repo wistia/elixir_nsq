@@ -7,5 +7,5 @@
   "poison": {:hex, :poison, "1.5.0", "f2f4f460623a6f154683abae34352525e1d918380267cdbd949a07ba57503248", [:mix], []},
   "ranch": {:hex, :ranch, "1.2.0", "b286a948a0706a700a9f577e5cecbb2dc66097ea79f3ddb20ba5536069bdb7aa", [:make], []},
   "secure_random": {:hex, :secure_random, "0.2.0", "d5458ab5613410439c21a2fdbc52e98e6c96338f3ea25d08220c30cfc55f1238", [:mix], []},
-  "socket": {:hex, :socket, "0.3.1", "c17c6da3f85ae07b730fcfa3b9b44051e1f7cbd5c202c46ea926493004d4cc18", [:mix], []},
+  "socket": {:hex, :socket, "0.3.7", "68c029a8449fc6efc5f4c3bdf6d8b19ca94d3304e419f364c5cfc8b716f7c219", [:mix], []},
   "uuid": {:hex, :uuid, "1.1.2", "add3d0a6324ac2e3974855822ddf1cd4e270d8c136a75bcb71332bd4956b0563", [:mix], []}}

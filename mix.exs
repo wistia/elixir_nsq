@@ -34,7 +34,7 @@ defmodule ElixirNsq.Mixfile do
       {:ibrowse, "~> 4.2"},
       {:httpotion, "~> 2.1.0"},
       {:uuid, "~> 1.1.2"},
-      {:socket, ">= 0.3.1 and <= 0.3.5"},
+      {:socket, "~> 0.3.1"},
 
       # testing
       {:secure_random, "~> 0.2", only: :test},
