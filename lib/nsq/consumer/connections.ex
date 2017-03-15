@@ -134,10 +134,14 @@ defmodule NSQ.Consumer.Connections do
       # `RDY.redistribute` loop will take care of getting this connection some
       # messages later.
       remaining_rdy = cons_state.max_in_flight - total_rdy_count(cons_state)
-      if remaining_rdy > 0 do
-        conn = conn_from_nsqd(cons, nsqd, cons_state)
-        {:ok, cons_state} = RDY.transmit(conn, 1, cons_state)
-      end
+      cons_state =
+        if remaining_rdy > 0 do
+          conn = conn_from_nsqd(cons, nsqd, cons_state)
+          {:ok, cons_state} = RDY.transmit(conn, 1, cons_state)
+          cons_state
+        else
+          cons_state
+        end
 
       {:ok, cons_state}
     catch

@@ -134,26 +134,27 @@ defmodule NSQ.Connection.Initializer do
     end
 
     # respect negotiated msg_timeout
-    if parsed["msg_timeout"] do
-      conn_state = %{conn_state | msg_timeout: parsed["msg_timeout"]}
-    else
-      conn_state = %{conn_state | msg_timeout: conn_state.config.msg_timeout}
-    end
+    timeout = parsed["msg_timeout"] || conn_state.config.msg_timeout
+    conn_state = %{conn_state | msg_timeout: timeout}
 
     # wrap our socket with SSL if TLS is enabled
-    if parsed["tls_v1"] == true do
-      Logger.debug "Upgrading to TLS..."
-      socket = Socket.SSL.connect! conn_state.socket, [
-        cacertfile: conn_state.config.tls_cert,
-        keyfile: conn_state.config.tls_key,
-        versions: ssl_versions(conn_state.config.tls_min_version),
-        verify: ssl_verify_atom(conn_state.config),
-      ]
-      conn_state = %{conn_state | socket: socket}
-      conn_state.reader |> Buffer.setup_socket(socket, conn_state.config.read_timeout)
-      conn_state.writer |> Buffer.setup_socket(socket, conn_state.config.read_timeout)
-      conn_state |> wait_for_ok!
-    end
+    conn_state =
+      if parsed["tls_v1"] == true do
+        Logger.debug "Upgrading to TLS..."
+        socket = Socket.SSL.connect! conn_state.socket, [
+          cacertfile: conn_state.config.tls_cert,
+          keyfile: conn_state.config.tls_key,
+          versions: ssl_versions(conn_state.config.tls_min_version),
+          verify: ssl_verify_atom(conn_state.config),
+        ]
+        conn_state = %{conn_state | socket: socket}
+        conn_state.reader |> Buffer.setup_socket(socket, conn_state.config.read_timeout)
+        conn_state.writer |> Buffer.setup_socket(socket, conn_state.config.read_timeout)
+        conn_state |> wait_for_ok!
+        conn_state
+      else
+        conn_state
+      end
 
     # If compression is enabled, we expect to receive a compressed "OK"
     # immediately.

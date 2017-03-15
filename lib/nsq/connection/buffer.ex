@@ -208,9 +208,12 @@ defmodule NSQ.Connection.Buffer do
           end
       end
 
-    if is_list(decompressed) do
-      decompressed = decompressed |> List.flatten |> Enum.join("")
-    end
+    decompressed =
+      if is_list(decompressed) do
+        decompressed |> List.flatten |> Enum.join("")
+      else
+        decompressed
+      end
 
     combined_buffer = state.buffered_data <> decompressed
 

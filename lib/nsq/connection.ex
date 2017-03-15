@@ -143,10 +143,11 @@ defmodule NSQ.Connection do
 
 
   @spec handle_cast(:reconnect, state) :: {:noreply, state}
+  def handle_cast(:reconnect, %{connect_attempts: connect_attempts} = conn_state) when connect_attempts > 0 do
+    {_, conn_state} = Initializer.connect(conn_state)
+    {:noreply, conn_state}
+  end
   def handle_cast(:reconnect, conn_state) do
-    if conn_state.connect_attempts > 0 do
-      {_, conn_state} = Initializer.connect(conn_state)
-    end
     {:noreply, conn_state}
   end
 

@@ -29,26 +29,27 @@ defmodule NSQ.Connection.MessageHandling do
     end
   end
 
-
-  def handle_nsq_message(msg, state) do
-    case msg do
-      {:response, "_heartbeat_"} ->
-        respond_to_heartbeat(state)
-
-      {:response, data} ->
-        {:ok, state} = state |> Command.send_response_to_caller(data)
-
-      {:error, data} ->
-        state |> log_error(nil, data)
-
-      {:error, reason, data} ->
-        state |> log_error(reason, data)
-
-      {:message, data} ->
-        {:ok, state} = state |> kick_off_message_processing(data)
-    end
-
+  def handle_nsq_message({:response, "_heartbeat_"}, state) do
+    respond_to_heartbeat(state)
     {:ok, state}
+  end
+
+  def handle_nsq_message({:response, data}, state) do
+    state |> Command.send_response_to_caller(data)
+  end
+
+  def handle_nsq_message({:error, data}, state) do
+    state |> log_error(nil, data)
+    {:ok, state}
+  end
+
+  def handle_nsq_message({:error, reason, data}, state) do
+    state |> log_error(reason, data)
+    {:ok, state}
+  end
+
+  def handle_nsq_message({:message, data}, state) do
+    state |> kick_off_message_processing(data)
   end
 
 
