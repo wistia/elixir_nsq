@@ -190,8 +190,17 @@ with foreman is included to start these up. If you don't have
 [foreman](https://github.com/ddollar/foreman), you'll need to find a way to run
 those commands if you want to run the tests.
 
+If you are using nsq < 1.0.0
+
 ```bash
-foreman start
+WORKER_ID=node-id foreman start
+mix test
+```
+
+If you are using nsq >= 1.0.0
+
+```bash
+WORKER_ID=worker-id foreman start
 mix test
 ```
 
