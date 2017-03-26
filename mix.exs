@@ -40,7 +40,7 @@ defmodule ElixirNsq.Mixfile do
       {:secure_random, "~> 0.2", only: :test},
 
       # Small HTTP server for running tests
-      {:http_server, github: "parroty/http_server", tag: "09ea61f42097483d3e70749be30490004a5df38f", only: :test},
+      {:http_server, github: "parroty/http_server"},
     ]
   end
 
