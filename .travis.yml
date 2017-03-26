@@ -6,18 +6,25 @@ elixir:
 otp_release:
   - 18.0
 
+env:
+  - NSQ_DOWNLOAD=nsq-0.3.5.linux-amd64.go1.4.2 NSQ_VER=v0.3.5 WORKER_ID=worker-id
+  - NSQ_DOWNLOAD=nsq-0.3.6.linux-amd64.go1.5.1 NSQ_VER=v0.3.6 WORKER_ID=worker-id
+  - NSQ_DOWNLOAD=nsq-0.3.7.linux-amd64.go1.6 NSQ_VER=v0.3.7 WORKER_ID=worker-id
+  - NSQ_DOWNLOAD=nsq-0.3.8.linux-amd64.go1.6.2 NSQ_VER=v0.3.8 WORKER_ID=worker-id
+  - NSQ_DOWNLOAD=nsq-1.0.0-compat.linux-amd64.go1.8 NSQ_VER=v1.0.0-compat WORKER_ID=node-id
+
 before_install:
-  - wget https://github.com/fclairamb/nsq-debian-package/releases/download/0.3.5/nsq_0.3.5_amd64.deb
-  - sudo dpkg -i nsq_0.3.5_amd64.deb
+  - wget https://github.com/nsqio/nsq/releases/download/$NSQ_VER/$NSQ_DOWNLOAD.tar.gz
+  - tar xvzf $NSQ_DOWNLOAD.tar.gz
 
 before_script:
   - MIX_ENV=test mix deps.get
   - MIX_ENV=test mix compile
   - MIX_ENV=test mix run --no-halt -e "NSQ.Test.AuthServer.start(6790)" &
-  - nsqd --tcp-address=127.0.0.1:6750 --http-address=127.0.0.1:6751 --worker-id=512 --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:6770 --lookupd-tcp-address=127.0.0.1:6780 &
-  - nsqd --tcp-address=127.0.0.1:6760 --http-address=127.0.0.1:6761 --worker-id=513 --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:6770 --lookupd-tcp-address=127.0.0.1:6780 &
-  - nsqd --tcp-address=127.0.0.1:6765 --http-address=127.0.0.1:6766 --https-address=127.0.0.1:6767 --worker-id=514 --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:6770 --lookupd-tcp-address=127.0.0.1:6780 --tls-required=false --tls-root-ca-file=test/ssl_keys/elixirNsq.pem --tls-key=test/ssl_keys/elixir_nsq.key --tls-cert=test/ssl_keys/elixir_nsq.crt --auth-http-address=127.0.0.1:6790 &
-  - nsqlookupd --tcp-address=127.0.0.1:6770 --http-address=127.0.0.1:6771 --broadcast-address=127.0.0.1 &
-  - nsqlookupd --tcp-address=127.0.0.1:6780 --http-address=127.0.0.1:6781 --broadcast-address=127.0.0.1 &
+  - $NSQ_DOWNLOAD/bin/nsqd --tcp-address=127.0.0.1:6750 --http-address=127.0.0.1:6751 --$WORKER_ID=512 --data-path=test/data_paths/512 --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:6770 --lookupd-tcp-address=127.0.0.1:6780 &
+  - $NSQ_DOWNLOAD/bin/nsqd --tcp-address=127.0.0.1:6760 --http-address=127.0.0.1:6761 --$WORKER_ID=513 --data-path=test/data_paths/513 --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:6770 --lookupd-tcp-address=127.0.0.1:6780 &
+  - $NSQ_DOWNLOAD/bin/nsqd --tcp-address=127.0.0.1:6765 --http-address=127.0.0.1:6766 --https-address=127.0.0.1:6767 --$WORKER_ID=514 --data-path=test/data_paths/514 --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:6770 --lookupd-tcp-address=127.0.0.1:6780 --tls-required=false --tls-root-ca-file=test/ssl_keys/elixirNsq.pem --tls-key=test/ssl_keys/elixir_nsq.key --tls-cert=test/ssl_keys/elixir_nsq.crt --auth-http-address=127.0.0.1:6790 &
+  - $NSQ_DOWNLOAD/bin/nsqlookupd --tcp-address=127.0.0.1:6770 --http-address=127.0.0.1:6771 --broadcast-address=127.0.0.1 &
+  - $NSQ_DOWNLOAD/bin/nsqlookupd --tcp-address=127.0.0.1:6780 --http-address=127.0.0.1:6781 --broadcast-address=127.0.0.1 &
 
 script: mix test
