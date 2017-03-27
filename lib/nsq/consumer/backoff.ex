@@ -45,32 +45,31 @@ defmodule NSQ.Consumer.Backoff do
   start_stop_continue.)
   """
   @spec resume(pid, C.state) :: {:ok, C.state}
+  def resume(_cons, %{backoff_duration: 0, backoff_counter: 0} = cons_state),
+    # looks like we successfully left backoff mode already
+    do: {:ok, cons_state}
+
+  def resume(_cons, %{stop_flag: true} = cons_state),
+    do: {:ok, %{cons_state | backoff_duration: 0}}
+
   def resume(cons, cons_state) do
-    if cons_state.backoff_duration == 0 || cons_state.backoff_counter == 0 do
-      # looks like we successfully left backoff mode already
-      {:ok, cons_state}
-    else
-      if cons_state.stop_flag do
-        {:ok, %{cons_state | backoff_duration: 0}}
+    {:ok, cons_state} =
+      if Connections.count(cons_state) == 0 do
+        # This could happen if nsqlookupd suddenly stops discovering
+        # connections. Maybe a network partition?
+        Logger.warn("no connection available to resume")
+        Logger.warn("backing off for 1 second")
+        resume_later(cons, 1000, cons_state)
       else
-        if Connections.count(cons_state) == 0 do
-          # This could happen if nsqlookupd suddenly stops discovering
-          # connections. Maybe a network partition?
-          Logger.warn("no connection available to resume")
-          Logger.warn("backing off for 1 second")
-          {:ok, cons_state} = resume_later(cons, 1000, cons_state)
-        else
-          # pick a random connection to test the waters
-          conn = random_connection_for_backoff(cons_state)
-          Logger.warn("(#{inspect conn}) backoff timeout expired, sending RDY 1")
+        # pick a random connection to test the waters
+        conn = random_connection_for_backoff(cons_state)
+        Logger.warn("(#{inspect conn}) backoff timeout expired, sending RDY 1")
 
-          # while in backoff only ever let 1 message at a time through
-          {:ok, cons_state} = RDY.update(cons, conn, 1, cons_state)
-        end
-
-        {:ok, %{cons_state | backoff_duration: 0}}
+        # while in backoff only ever let 1 message at a time through
+        RDY.update(cons, conn, 1, cons_state)
       end
-    end
+
+    {:ok, %{cons_state | backoff_duration: 0}}
   end
 
   def resume!(cons, cons_state) do

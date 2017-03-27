@@ -83,20 +83,25 @@ defmodule NSQ.Consumer.RDY do
     # Cap the given RDY based on how much we can actually assign. Unless it's
     # 0, in which case we'll be retrying.
     max_possible_rdy = calc_max_possible(cons_state, conn_info)
-    if max_possible_rdy > 0 do
-      new_rdy = [new_rdy, max_possible_rdy] |> Enum.min |> round
-    end
+    new_rdy = if max_possible_rdy > 0 do
+                [new_rdy, max_possible_rdy] |> Enum.min |> round
+              else
+                new_rdy
+              end
 
-    if max_possible_rdy <= 0 && new_rdy > 0 do
-      if conn_info.rdy_count == 0 do
-        # Schedule RDY.update(consumer, conn, new_rdy) for this connection
-        # again in 5 seconds. This is to prevent eternal starvation.
-        {:ok, cons_state} = retry(cons, conn, new_rdy, cons_state)
+    {:ok, cons_state} =
+      if max_possible_rdy <= 0 && new_rdy > 0 do
+        if conn_info.rdy_count == 0 do
+          # Schedule RDY.update(consumer, conn, new_rdy) for this connection
+          # again in 5 seconds. This is to prevent eternal starvation.
+          retry(cons, conn, new_rdy, cons_state)
+        else
+          {:ok, cons_state}
+        end
+      else
+        transmit(conn, new_rdy, cons_state)
       end
-      {:ok, cons_state}
-    else
-      {:ok, _cons_state} = transmit(conn, new_rdy, cons_state)
-    end
+    {:ok, cons_state}
   end
 
   def update!(cons, conn, new_rdy, cons_state) do

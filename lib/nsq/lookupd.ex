@@ -58,9 +58,7 @@ defmodule NSQ.Lookupd do
 
   @spec normalize_200_response([any], binary) :: response
   defp normalize_200_response(headers, body) do
-    if body == nil || body == "" do
-      body = "{}"
-    end
+    body = if body == nil || body == "", do: "{}", else: body
 
     if headers[:"X-Nsq-Content-Type"] == "nsq; version=1.0" do
       Poison.decode!(body)
