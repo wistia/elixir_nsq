@@ -30,14 +30,13 @@ defmodule ElixirNsq.Mixfile do
   # Type "mix help deps" for more examples and options
   defp deps do
     [
-      {:poison, "~> 1.5.0"},
-      {:ibrowse, "~> 4.2"},
-      {:httpotion, "~> 2.1.0"},
-      {:uuid, "~> 1.1.2"},
-      {:socket, "~> 0.3.1"},
+      {:poison, "~> 3.1.0"},
+      {:httpotion, "~> 3.0"},
+      {:uuid, "~> 1.1.7"},
+      {:socket, "~> 0.3.11"},
 
       # testing
-      {:secure_random, "~> 0.2", only: :test},
+      {:secure_random, "~> 0.5", only: :test},
 
       # Small HTTP server for running tests
       {:http_server, github: "parroty/http_server"},
