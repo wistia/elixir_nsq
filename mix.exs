@@ -4,7 +4,7 @@ defmodule ElixirNsq.Mixfile do
   def project do
     [app: :elixir_nsq,
      version: "1.0.3",
-     elixir: "~> 1.1",
+     elixir: "~> 1.3",
      description: description(),
      package: package(),
      build_embedded: Mix.env == :prod,
