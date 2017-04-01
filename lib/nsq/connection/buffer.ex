@@ -88,10 +88,6 @@ defmodule NSQ.Connection.Buffer do
     {:ok, data} = state |> recv(size)
     data
   end
-  def recv!(buffer, size, timeout) do
-    {:ok, data} = buffer |> recv(size, timeout)
-    data
-  end
 
 
   def send!(%{writer: buffer}, data) do

@@ -112,18 +112,6 @@ defmodule NSQ.Connection.Initializer do
   end
 
 
-  def inflate(data) do
-    z = :zlib.open
-    :ok = z |> :zlib.inflateInit(-15)
-    inflated = z |> :zlib.inflateChunk(data)
-    Logger.warn "inflated chunk?"
-    Logger.warn inspect inflated
-    :ok = z |> :zlib.inflateEnd
-    :ok = z |> :zlib.close
-    inflated
-  end
-
-
   @spec update_from_identify_response(C.state, binary) :: {:ok, C.state}
   defp update_from_identify_response(conn_state, json) do
     {:ok, parsed} = Poison.decode(json)
