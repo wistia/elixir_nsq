@@ -78,7 +78,7 @@ defmodule NSQ.Consumer.Backoff do
   end
 
 
-  @spec backoff(pid, C.state, boolean) :: {:ok, C.state}
+  @spec backoff(pid, C.state, boolean) :: none
   defp backoff(cons, cons_state, backoff_signal) do
     backoff_duration = calculate_backoff(cons_state)
     Logger.warn "backing off for #{backoff_duration / 1000} seconds (backoff level #{cons_state.backoff_counter}), setting all to RDY 0"
@@ -120,7 +120,7 @@ defmodule NSQ.Consumer.Backoff do
       {:ok, new_state} = RDY.update(cons, conn, count, last_state)
       new_state
     end
-    GenEvent.notify(cons_state.event_manager_pid, :resume)
+    :ok = GenEvent.notify(cons_state.event_manager_pid, :resume)
     {:ok, cons_state}
   end
 
@@ -129,7 +129,7 @@ defmodule NSQ.Consumer.Backoff do
   @spec resume_later(pid, integer, C.state) ::
     {:ok, C.state}
   defp resume_later(cons, duration, cons_state) do
-    Task.start_link fn ->
+    {:ok, _pid} = Task.start_link fn ->
       :timer.sleep(duration)
       GenServer.cast(cons, :resume)
     end

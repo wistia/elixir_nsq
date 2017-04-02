@@ -83,7 +83,7 @@ defmodule NSQ.Connection do
   end
 
 
-  @spec init(state) :: {:ok, state}
+  @spec init(C.state) :: {:ok, C.state}
   def init(conn_state) do
     {:ok, reader} = NSQ.Connection.Buffer.start_link(:reader)
     conn_state = %{conn_state | reader: reader}
@@ -155,7 +155,7 @@ defmodule NSQ.Connection do
   # When a task is done, it automatically messages the return value to the
   # calling process. we can use that opportunity to update the messages in
   # flight.
-  @spec handle_info({reference, {:message_done, NSQ.Message.t, any}}, state) ::
+  @spec handle_info({:message_done, NSQ.Message.t, any}, state) ::
     {:noreply, T.conn_state}
   def handle_info({:message_done, _msg, ret_val}, state) do
     state |> MessageHandling.update_conn_stats_on_message_done(ret_val)
@@ -177,7 +177,7 @@ defmodule NSQ.Connection do
   end
 
 
-  @spec close(pid, state) :: any
+  @spec close(pid, state) :: true
   def close(conn, conn_state \\ nil) do
     Logger.debug "Closing connection #{inspect conn}"
     conn_state = conn_state || get_state(conn)
@@ -207,7 +207,7 @@ defmodule NSQ.Connection do
   Calls the command and waits for a response. If a command shouldn't have a
   response, use cmd_noresponse.
   """
-  @spec cmd(pid, tuple, integer) :: {:ok, binary} | {:error, String.t}
+  @spec cmd(pid, tuple | atom, integer) :: {:ok, binary} | {:error, String.t}
   def cmd(conn_pid, cmd, timeout \\ 5000) do
     {:ok, ref} = GenServer.call(conn_pid, {:cmd, cmd, :reply})
     receive do
@@ -224,7 +224,7 @@ defmodule NSQ.Connection do
   NSQ command does not in fact generate a response. If you use `cmd` and a
   response is sent, it will live forever in the command queue.
   """
-  @spec cmd_noresponse(pid, tuple) :: {:ok, reference} | {:queued, :nosocket}
+  @spec cmd_noresponse(pid, tuple | atom) :: {:ok, reference} | {:queued, :nosocket}
   def cmd_noresponse(conn, cmd) do
     GenServer.call(conn, {:cmd, cmd, :noresponse})
   end

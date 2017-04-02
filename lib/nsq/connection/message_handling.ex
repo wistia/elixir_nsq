@@ -53,7 +53,7 @@ defmodule NSQ.Connection.MessageHandling do
   end
 
 
-  @spec update_conn_stats_on_message_done(C.state, any) :: any
+  @spec update_conn_stats_on_message_done(C.state, any) :: :ok
   def update_conn_stats_on_message_done(state, ret_val) do
     ConnInfo.update state, fn(info) ->
       info |> update_stats_from_ret_val(ret_val)
@@ -91,7 +91,7 @@ defmodule NSQ.Connection.MessageHandling do
   end
 
 
-  @spec log_error(C.state, binary, binary) :: any
+  @spec log_error(C.state | atom, binary, binary) :: any
   defp log_error(state, reason, data) do
     GenEvent.notify(state.event_manager_pid, {:error, reason, data})
     if reason do
@@ -135,7 +135,7 @@ defmodule NSQ.Connection.MessageHandling do
   end
 
 
-  @spec now :: integer
+  @spec now :: float
   defp now do
     {megasec, sec, microsec} = :os.timestamp
     1_000_000 * megasec + sec + microsec / 1_000_000

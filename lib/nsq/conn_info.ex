@@ -140,7 +140,7 @@ defmodule NSQ.ConnInfo do
   end
 
 
-  @spec init(map) :: any
+  @spec init(map) :: :ok
   def init(state) do
     update state, %{
       max_rdy: state.max_rdy,
@@ -157,7 +157,7 @@ defmodule NSQ.ConnInfo do
   end
 
 
-  @spec now :: integer
+  @spec now :: float
   defp now do
     {megasec, sec, microsec} = :os.timestamp
     1_000_000 * megasec + sec + microsec / 1_000_000

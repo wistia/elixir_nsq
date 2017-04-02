@@ -26,7 +26,7 @@ defmodule NSQ.Connection.Command do
   end
 
 
-  @spec send_data_and_queue_resp(C.state, tuple, {reference, pid}, atom) :: C.state
+  @spec send_data_and_queue_resp(C.state, tuple | atom, {reference, pid}, atom) :: C.state
   def send_data_and_queue_resp(state, cmd, from, kind) do
     state |> Buffer.send!(encode(cmd))
     if kind == :noresponse do
@@ -39,7 +39,7 @@ defmodule NSQ.Connection.Command do
   end
 
 
-  @spec send_response_to_caller(C.state, binary) :: {:ok, C.state}
+  @spec send_response_to_caller(C.state, binary) :: {:ok, C.state} | :ok
   def send_response_to_caller(state, data) do
     GenEvent.notify(state.event_manager_pid, {:response, data})
     {item, cmd_resp_queue} = :queue.out(state.cmd_resp_queue)
@@ -52,7 +52,7 @@ defmodule NSQ.Connection.Command do
   end
 
 
-  @spec flush_cmd_queue(C.state) :: C.state
+  @spec flush_cmd_queue(C.state) :: {:ok, C.state}
   def flush_cmd_queue(state) do
     {item, new_queue} = :queue.out(state.cmd_queue)
     case item do
@@ -64,13 +64,14 @@ defmodule NSQ.Connection.Command do
     end
   end
 
+  @spec flush_cmd_queue(C.state) :: C.state
   def flush_cmd_queue!(state) do
     {:ok, state} = flush_cmd_queue(state)
     state
   end
 
 
-  @spec update_state_from_cmd(tuple, C.state) :: C.state
+  @spec update_state_from_cmd(tuple | atom, C.state) :: C.state
   def update_state_from_cmd(cmd, state) do
     case cmd do
       {:rdy, count} ->
