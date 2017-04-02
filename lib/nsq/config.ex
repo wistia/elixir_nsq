@@ -17,7 +17,7 @@ defmodule NSQ.Config do
     # Duration between polling lookupd for new producers, and fractional jitter
     # to add to the lookupd pool loop. this helps evenly distribute requests
     # even if multiple consumers restart at the same time
-	  #
+    #
     # NOTE: when not using nsqlookupd, lookupd_poll_interval represents the
     # duration of time between reconnection attempts
     lookupd_poll_interval: 1 * @minutes,
