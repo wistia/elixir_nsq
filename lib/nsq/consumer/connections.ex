@@ -33,7 +33,7 @@ defmodule NSQ.Consumer.Connections do
   def close(cons_state) do
     Logger.info "Closing connections for consumer #{inspect self()}"
     connections = get(cons_state)
-    Enum.map connections, fn({_, conn_pid}) ->
+    Enum.each connections, fn({_, conn_pid}) ->
       Task.start_link(NSQ.Connection, :close, [conn_pid])
     end
     {:ok, %{cons_state | stop_flag: true}}
@@ -260,7 +260,7 @@ defmodule NSQ.Consumer.Connections do
   """
   @spec delete_dead(C.state) :: {:ok, C.state}
   def delete_dead(state) do
-    Enum.map get(state), fn({conn_id, pid}) ->
+    Enum.each get(state), fn({conn_id, pid}) ->
       unless Process.alive?(pid) do
         Supervisor.delete_child(state.conn_sup_pid, conn_id)
       end
@@ -275,7 +275,7 @@ defmodule NSQ.Consumer.Connections do
 
 
   def reconnect_failed(state) do
-    Enum.map get(state), fn({_, pid}) ->
+    Enum.each get(state), fn({_, pid}) ->
       if Process.alive?(pid), do: GenServer.cast(pid, :reconnect)
     end
     {:ok, state}
