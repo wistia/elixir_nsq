@@ -18,7 +18,7 @@ defmodule NSQ.Connection.Initializer do
     if should_connect?(state) do
       socket_opts = @socket_opts |> Keyword.merge(
         send: [{:timeout, state.config.write_timeout}],
-        timeout: state.config.dial_timeout,
+        timeout: state.config.dial_timeout
       )
 
       case Socket.TCP.connect(host, port, socket_opts) do
