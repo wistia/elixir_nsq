@@ -191,6 +191,11 @@ defmodule NSQ.Message do
       result = run_handler(message.config.message_handler, message)
       Process.flag(:trap_exit, false)
       result
+    rescue
+      e ->
+        Logger.error "Error running message handler: #{inspect e}"
+        Logger.error inspect System.stacktrace
+        {:req, -1, true}
     catch
       :exit, b ->
         Logger.error "Caught exit running message handler: :exit, #{inspect b}"
@@ -198,11 +203,6 @@ defmodule NSQ.Message do
         {:req, -1, true}
       a, b ->
         Logger.error "Caught exception running message handler: #{inspect a}, #{inspect b}"
-        Logger.error inspect System.stacktrace
-        {:req, -1, true}
-    rescue
-      e ->
-        Logger.error "Error running message handler: #{inspect e}"
         Logger.error inspect System.stacktrace
         {:req, -1, true}
     end
