@@ -36,7 +36,7 @@ defmodule NSQ.Lookupd do
   @spec topics_from_lookupd(C.host_with_port, String.t) :: response
   def topics_from_lookupd({host, port}, topic) do
     lookupd_url = "http://#{host}:#{port}/lookup?topic=#{topic}"
-    headers = [{"Accept", "application/vnd.nsq; version=1.0"}]
+    headers = ["Accept": "application/vnd.nsq; version=1.0"]
     try do
       case HTTPotion.get(lookupd_url, headers: headers) do
         %HTTPotion.Response{status_code: 200, body: body, headers: headers} ->
