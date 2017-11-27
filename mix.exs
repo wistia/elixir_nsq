@@ -53,7 +53,7 @@ defmodule ElixirNsq.Mixfile do
 
   defp package do
     [
-      files: ["lib", "mix.exs", "README*", "readme*", "LICENSE*", "license*"],
+      files: ["lib", "mix.exs", "README*", "LICENSE*"],
       maintainers: ["Max Schnur (max@wistia.com)"],
       licenses: ["MIT"],
       links: %{
