@@ -1,12 +1,12 @@
 language: elixir
 
 elixir:
-  - 1.2
   - 1.4
+  - 1.5
 
 otp_release:
-  - 18.0
   - 19.3
+  - 20.0
 
 env:
   - NSQ_DOWNLOAD=nsq-0.3.5.linux-amd64.go1.4.2 NSQ_VER=v0.3.5 WORKER_ID=worker-id
