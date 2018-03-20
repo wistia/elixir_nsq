@@ -29,4 +29,5 @@ before_script:
   - $NSQ_DOWNLOAD/bin/nsqlookupd --tcp-address=127.0.0.1:6770 --http-address=127.0.0.1:6771 --broadcast-address=127.0.0.1 &
   - $NSQ_DOWNLOAD/bin/nsqlookupd --tcp-address=127.0.0.1:6780 --http-address=127.0.0.1:6781 --broadcast-address=127.0.0.1 &
 
-script: mix test
+script:
+  - MIX_ENV=test mix coveralls.travis

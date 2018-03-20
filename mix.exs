@@ -9,7 +9,10 @@ defmodule ElixirNsq.Mixfile do
      package: package(),
      build_embedded: Mix.env == :prod,
      start_permanent: Mix.env == :prod,
-     deps: deps()]
+     deps: deps(),
+     test_coverage: [tool: ExCoveralls],
+     preferred_cli_env: ["coveralls": :test, "coveralls.detail": :test, "coveralls.post": :test, "coveralls.html": :test]
+   ]
   end
 
   # Configuration for the OTP application
@@ -38,6 +41,7 @@ defmodule ElixirNsq.Mixfile do
 
       # testing
       {:secure_random, "~> 0.2", only: :test},
+      {:excoveralls, "~> 0.6", only: :test},
 
       # Small HTTP server for running tests
       {:http_server, github: "parroty/http_server", only: :test},
