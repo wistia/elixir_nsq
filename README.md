@@ -193,14 +193,14 @@ those commands if you want to run the tests.
 If you are using nsq < 1.0.0
 
 ```bash
-WORKER_ID=node-id foreman start
+WORKER_ID=worker-id foreman start
 mix test
 ```
 
 If you are using nsq >= 1.0.0
 
 ```bash
-WORKER_ID=worker-id foreman start
+WORKER_ID=node-id foreman start
 mix test
 ```
 
