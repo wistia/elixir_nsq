@@ -32,7 +32,7 @@ defmodule ElixirNsq.Mixfile do
     [
       {:poison, "~> 3.0"},
       {:httpotion, "~> 3.1"},
-      {:uuid, "~> 1.1"},
+      {:elixir_uuid, "~> 1.2"},
       {:socket, "~> 0.3.1"},
 
       # testing
