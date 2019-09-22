@@ -7,7 +7,6 @@ elixir:
 otp_release:
   - "20.3"
   - "21.3"
-  - "22.1"
 
 env:
   - NSQ_DOWNLOAD=nsq-0.3.8.linux-amd64.go1.6.2 NSQ_VER=v0.3.8 WORKER_ID=worker-id
