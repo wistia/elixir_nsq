@@ -46,7 +46,7 @@ defmodule NSQ.Consumer.Helpers do
   end
 
 
-  @spec now() :: integer
+  @spec now() :: non_neg_integer
   def now do
     :calendar.datetime_to_gregorian_seconds(:calendar.universal_time)
   end

@@ -15,7 +15,7 @@ defmodule NSQ.Consumer.Connections do
   Initialized from NSQ.Consumer.Supervisor, sends the consumer a message on a
   fixed interval.
   """
-  @spec discovery_loop(pid) :: any
+  @spec discovery_loop(pid) :: none
   def discovery_loop(cons) do
     cons_state = C.get_state(cons)
     %NSQ.Config{
@@ -285,12 +285,7 @@ defmodule NSQ.Consumer.Connections do
   @spec count(C.state) :: integer
   def count(cons_state) do
     %{active: active} = Supervisor.count_children(cons_state.conn_sup_pid)
-    if is_integer(active) do
-      active
-    else
-      Logger.warn "(#{inspect self()}) non-integer #{inspect active} returned counting connections, returning 0 instead"
-      0
-    end
+    active
   end
 
 

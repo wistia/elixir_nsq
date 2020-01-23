@@ -157,7 +157,7 @@ defmodule NSQ.Consumer do
   On init, we create a connection for each NSQD instance discovered, and set
   up loops for discovery and RDY redistribution.
   """
-  @spec init(map) :: {:ok, cons_state}
+  @spec init(map) :: none
   def init(cons_state) do
     {:ok, conn_sup_pid} = NSQ.Connection.Supervisor.start_link
     cons_state = %{cons_state | conn_sup_pid: conn_sup_pid}

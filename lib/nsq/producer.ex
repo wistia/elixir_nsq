@@ -179,7 +179,7 @@ defmodule NSQ.Producer do
   """
   @spec connect_to_nsqds([host_with_port], pid, pro_state) :: {:ok, pro_state}
   def connect_to_nsqds(nsqds, pro, pro_state) do
-    Enum.map nsqds, fn(nsqd) ->
+    Enum.each nsqds, fn(nsqd) ->
       {:ok, _conn} = NSQ.Connection.Supervisor.start_child(
         pro, nsqd, pro_state, [restart: :permanent]
       )

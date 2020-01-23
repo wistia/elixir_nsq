@@ -16,7 +16,7 @@ defmodule NSQ.Consumer.RDY do
   Initialized from NSQ.Consumer.Supervisor, sends the consumer a message on a
   fixed interval.
   """
-  @spec redistribute_loop(pid) :: any
+  @spec redistribute_loop(pid) :: none
   def redistribute_loop(cons) do
     cons_state = C.get_state(cons)
     GenServer.call(cons, :redistribute_rdy)
@@ -173,7 +173,7 @@ defmodule NSQ.Consumer.RDY do
       end
 
       # Free up any connections that are RDY but not processing messages.
-      Connections.idle_with_rdy(cons_state) |> Enum.map(fn(conn) ->
+      Connections.idle_with_rdy(cons_state) |> Enum.each(fn(conn) ->
         Logger.debug("(#{inspect conn}) idle connection, giving up RDY")
         {:ok, _cons_state} = update(cons, conn, 0, cons_state)
       end)

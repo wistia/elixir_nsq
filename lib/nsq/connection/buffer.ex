@@ -120,6 +120,7 @@ defmodule NSQ.Connection.Buffer do
 
   defp open_zin! do
     z = :zlib.open
+    # 15 bits window, ignore the zlib header and checksum
     :ok = z |> :zlib.inflateInit(-15)
     z
   end
@@ -127,6 +128,8 @@ defmodule NSQ.Connection.Buffer do
 
   defp open_zout!(level) do
     z = :zlib.open
+    # 15 bits window, ignore the zlib header and checksum
+    # 8 MemLevel (default)
     :ok = z |> :zlib.deflateInit(level, :deflated, -15, 8, :default)
     z
   end

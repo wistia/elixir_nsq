@@ -13,7 +13,7 @@ defmodule NSQ.Connection.Initializer do
   @ssl_versions [:sslv3, :tlsv1, :"tlsv1.1", :"tlsv1.2"] |> Enum.with_index
 
 
-  @spec connect(%{nsqd: C.host_with_port}) :: {:ok, C.state} | {:error, String.t}
+  @spec connect(%{nsqd: C.host_with_port}) :: {:ok, C.state} | {:error, String.t} | true
   def connect(%{nsqd: {host, port}} = state) do
     if should_connect?(state) do
       socket_opts = @socket_opts |> Keyword.merge(
@@ -82,7 +82,7 @@ defmodule NSQ.Connection.Initializer do
   end
 
 
-  @spec identify(C.state) :: {:ok, binary}
+  @spec identify(C.state) :: none
   defp identify(conn_state) do
     Logger.debug("(#{inspect self()}) identifying...")
     identify_obj = encode({:identify, identify_props(conn_state)})
@@ -185,7 +185,7 @@ defmodule NSQ.Connection.Initializer do
   end
 
 
-  @spec subscribe(C.state) :: {:ok, binary}
+  @spec subscribe(C.state) :: binary
   defp subscribe(%{topic: topic, channel: channel} = conn_state) do
     Logger.debug "(#{inspect self()}) subscribe to #{topic} #{channel}"
     conn_state |> Buffer.send!(encode({:sub, topic, channel}))
