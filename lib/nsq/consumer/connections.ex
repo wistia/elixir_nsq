@@ -240,19 +240,6 @@ defmodule NSQ.Consumer.Connections do
 
 
   @doc """
-  Frequently, when testing, we publish a message then immediately want a
-  consumer to process it, but this doesn't work if the consumer doesn't
-  discover the nsqd first. Only meant for testing.
-  """
-  @spec discover_nsqds(pid) :: :ok
-  def discover_nsqds(sup_pid) do
-    cons = C.get(sup_pid)
-    GenServer.call(cons, :discover_nsqds)
-    :ok
-  end
-
-
-  @doc """
   Iterate over all listed connections and delete the ones that are dead. This
   exists because it is difficult to reliably clean up a connection immediately
   after it is terminated (it might still be running). This function runs in the
