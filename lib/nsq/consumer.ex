@@ -132,8 +132,8 @@ defmodule NSQ.Consumer do
   @doc """
   Starts a Consumer process, called via the supervisor.
   """
-  @spec start_link(String.t(), String.t(), NSQ.Config.t(), list) :: {:ok, pid}
-  def start_link(topic, channel, config, opts \\ []) do
+  @spec start_link({String.t(), String.t(), String.t(), NSQ.Config.t()}) :: {:ok, pid}
+  def start_link({topic, channel, cons_name, config}) do
     {:ok, config} = NSQ.Config.validate(config)
     {:ok, config} = NSQ.Config.normalize(config)
     unless is_valid_topic_name?(topic), do: raise("Invalid topic name #{topic}")
@@ -147,7 +147,7 @@ defmodule NSQ.Consumer do
         max_in_flight: config.max_in_flight
     }
 
-    GenServer.start_link(__MODULE__, state, opts)
+    GenServer.start_link(__MODULE__, state, name: cons_name)
   end
 
   @doc """
@@ -171,7 +171,6 @@ defmodule NSQ.Consumer do
       end
 
     cons_state = %{cons_state | event_manager_pid: manager}
-
     cons_state = %{cons_state | max_in_flight: cons_state.config.max_in_flight}
 
     {:ok, _cons_state} = Connections.discover_nsqds_and_connect(self(), cons_state)
