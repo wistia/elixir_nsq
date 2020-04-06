@@ -42,7 +42,8 @@ defmodule ElixirNsq.Mixfile do
 
       # Small HTTP server for running tests
       {:http_server, github: "parroty/http_server", only: :test},
-      {:ex_doc, ">= 0.0.0", only: :dev}
+      {:ex_doc, ">= 0.0.0", only: :dev},
+      {:dialyxir, "~> 1.0", only: [:dev], runtime: false}
     ]
   end
 
