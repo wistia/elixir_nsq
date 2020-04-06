@@ -19,7 +19,7 @@ defmodule ElixirNsq.Mixfile do
   # Type "mix help compile.app" for more information
   def application do
     [
-      extra_applications: [:logger, :httpotion]
+      extra_applications: [:logger]
     ]
   end
 
@@ -35,9 +35,9 @@ defmodule ElixirNsq.Mixfile do
   defp deps do
     [
       {:poison, "~> 3.0"},
-      {:httpotion, "~> 3.1"},
       {:elixir_uuid, "~> 1.2.1"},
       {:socket, "~> 0.3.13"},
+      {:httpoison, "~> 1.6"},
 
       # testing
       {:secure_random, "~> 0.2", only: :test},

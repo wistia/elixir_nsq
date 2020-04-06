@@ -8,10 +8,10 @@ defmodule NSQ.ProducerTest do
 
   setup do
     Logger.configure(level: :warn)
-    HTTPotion.post("http://127.0.0.1:6751/topic/delete?topic=#{@test_topic}")
-    HTTPotion.post("http://127.0.0.1:6761/topic/delete?topic=#{@test_topic}")
-    HTTPotion.post("http://127.0.0.1:6771/topic/delete?topic=#{@test_topic}")
-    HTTPotion.post("http://127.0.0.1:6781/topic/delete?topic=#{@test_topic}")
+    HTTPoison.post!("http://127.0.0.1:6751/topic/delete?topic=#{@test_topic}", "")
+    HTTPoison.post!("http://127.0.0.1:6761/topic/delete?topic=#{@test_topic}", "")
+    HTTPoison.post!("http://127.0.0.1:6771/topic/delete?topic=#{@test_topic}", "")
+    HTTPoison.post!("http://127.0.0.1:6781/topic/delete?topic=#{@test_topic}", "")
     :ok
   end
 
