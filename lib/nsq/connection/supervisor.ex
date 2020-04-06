@@ -11,7 +11,6 @@ defmodule NSQ.Connection.Supervisor do
   use Supervisor
   alias NSQ.ConnInfo, as: ConnInfo
 
-
   # ------------------------------------------------------- #
   # Behaviour Implementation                                #
   # ------------------------------------------------------- #
@@ -19,10 +18,10 @@ defmodule NSQ.Connection.Supervisor do
     Supervisor.start_link(__MODULE__, :ok, opts)
   end
 
-
   def start_child(parent, nsqd, parent_state \\ nil, opts \\ []) do
     parent_state = parent_state || GenServer.call(parent, :state)
     conn_sup_pid = parent_state.conn_sup_pid
+
     args = [
       parent,
       nsqd,
@@ -32,6 +31,7 @@ defmodule NSQ.Connection.Supervisor do
       parent_state.conn_info_pid,
       parent_state.event_manager_pid
     ]
+
     conn_id = ConnInfo.conn_id(parent, nsqd)
 
     # When using nsqlookupd, we expect connections will be naturally
@@ -41,7 +41,6 @@ defmodule NSQ.Connection.Supervisor do
     child = worker(NSQ.Connection, args, opts)
     Supervisor.start_child(conn_sup_pid, child)
   end
-
 
   def init(:ok) do
     supervise([], strategy: :one_for_one)

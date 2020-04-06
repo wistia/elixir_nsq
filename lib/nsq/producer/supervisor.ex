@@ -9,6 +9,7 @@ defmodule NSQ.Producer.Supervisor do
     children = [
       worker(NSQ.Producer, [topic, config])
     ]
+
     supervise(children, strategy: :one_for_one)
   end
 end

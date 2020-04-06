@@ -3,7 +3,7 @@ defmodule NSQ.MessageTest do
   doctest NSQ.Message
 
   def now do
-    :calendar.datetime_to_gregorian_seconds(:calendar.universal_time)
+    :calendar.datetime_to_gregorian_seconds(:calendar.universal_time())
   end
 
   def build_raw_nsq_data(attrs \\ %{}) do
@@ -12,10 +12,10 @@ defmodule NSQ.MessageTest do
     msg_id = attrs[:id] || String.ljust(SecureRandom.hex(8), 16, ?0)
     data = attrs[:body] || "test data"
 
-    <<timestamp :: size(64)>>
-      <> <<attempts :: size(16)>>
-      <> msg_id
-      <> data
+    <<timestamp::size(64)>> <>
+      <<attempts::size(16)>> <>
+      msg_id <>
+      data
   end
 
   test "#from_data given raw data, returns an instance of %NSQ.Message" do

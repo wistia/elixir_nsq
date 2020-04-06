@@ -16,17 +16,18 @@ defmodule NSQ.ProducerTest do
   end
 
   test "#new starts a new producer, discoverable via nsqlookupd" do
-    {:ok, producer} = NSQ.Producer.Supervisor.start_link(
-      @test_topic, %NSQ.Config{nsqds: @configured_nsqds}
-    )
+    {:ok, producer} =
+      NSQ.Producer.Supervisor.start_link(
+        @test_topic,
+        %NSQ.Config{nsqds: @configured_nsqds}
+      )
 
     # Produce a ton of messages so we're "guaranteed" both our nsqds have
     # messages and are therefore discoverable.
-    Enum.map 0..100, fn(_i) -> NSQ.Producer.pub(producer, "test 1") end
+    Enum.map(0..100, fn _i -> NSQ.Producer.pub(producer, "test 1") end)
 
     lookupds = [{"127.0.0.1", 6771}, {"127.0.0.1", 6781}]
-    discovered_nsqds =
-      lookupds |> NSQ.Lookupd.nsqds_with_topic("__nsq_producer_test_topic__")
+    discovered_nsqds = lookupds |> NSQ.Lookupd.nsqds_with_topic("__nsq_producer_test_topic__")
 
     # Sort the arrays so we can compare them.
     configured_nsqds = Enum.sort_by(NSQ.Config.normalize_hosts(@configured_nsqds), &inspect(&1))
@@ -36,14 +37,17 @@ defmodule NSQ.ProducerTest do
   end
 
   test "messages added via pub are handled by a consumer" do
-    {:ok, producer} = NSQ.Producer.Supervisor.start_link(
-      @test_topic, %NSQ.Config{nsqds: @configured_nsqds}
-    )
+    {:ok, producer} =
+      NSQ.Producer.Supervisor.start_link(
+        @test_topic,
+        %NSQ.Config{nsqds: @configured_nsqds}
+      )
 
     test_pid = self()
+
     NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: @configured_nsqds,
-      message_handler: fn(body, msg) ->
+      message_handler: fn body, msg ->
         assert body == "test abc"
         assert msg.attempts == 1
         send(test_pid, :handled)
@@ -56,16 +60,19 @@ defmodule NSQ.ProducerTest do
   end
 
   test "messages added via mpub are handled by a consumer" do
-    {:ok, producer} = NSQ.Producer.Supervisor.start_link(
-      @test_topic, %NSQ.Config{nsqds: @configured_nsqds}
-    )
+    {:ok, producer} =
+      NSQ.Producer.Supervisor.start_link(
+        @test_topic,
+        %NSQ.Config{nsqds: @configured_nsqds}
+      )
 
     test_pid = self()
     {:ok, bodies} = Agent.start_link(fn -> [] end)
+
     NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: @configured_nsqds,
-      message_handler: fn(body, _msg) ->
-        Agent.update bodies, fn(list) -> [body|list] end
+      message_handler: fn body, _msg ->
+        Agent.update(bodies, fn list -> [body | list] end)
         send(test_pid, :handled)
         :ok
       end
@@ -74,6 +81,6 @@ defmodule NSQ.ProducerTest do
     NSQ.Producer.mpub(producer, ["def", "ghi"])
     assert_receive(:handled, 2000)
     assert_receive(:handled, 2000)
-    assert Agent.get(bodies, fn(list) -> list end) == ["def", "ghi"]
+    assert Agent.get(bodies, fn list -> list end) == ["def", "ghi"]
   end
 end

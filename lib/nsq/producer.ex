@@ -47,7 +47,6 @@ defmodule NSQ.Producer do
   import NSQ.Protocol
   use GenServer
 
-
   # ------------------------------------------------------- #
   # Module Attributes                                       #
   # ------------------------------------------------------- #
@@ -60,34 +59,32 @@ defmodule NSQ.Producer do
     conn_info_pid: nil
   }
 
-
   # ------------------------------------------------------- #
   # Type Definitions                                        #
   # ------------------------------------------------------- #
   @typedoc """
   A tuple with a host and a port.
   """
-  @type host_with_port :: {String.t, integer}
+  @type host_with_port :: {String.t(), integer}
 
   @typedoc """
   A tuple with a string ID (used to target the connection in
   NSQ.Connection.Supervisor) and a PID of the connection.
   """
-  @type connection :: {String.t, pid}
+  @type connection :: {String.t(), pid}
 
   @typedoc """
   A map, but we can be more specific by asserting some entries that should be
   set for a connection's state map.
   """
-  @type pro_state :: %{conn_sup_pid: pid, config: NSQ.Config.t}
-
+  @type pro_state :: %{conn_sup_pid: pid, config: NSQ.Config.t()}
 
   # ------------------------------------------------------- #
   # Behaviour Implementation                                #
   # ------------------------------------------------------- #
   @spec init(pro_state) :: {:ok, pro_state}
   def init(pro_state) do
-    {:ok, conn_sup_pid} = NSQ.Connection.Supervisor.start_link
+    {:ok, conn_sup_pid} = NSQ.Connection.Supervisor.start_link()
     pro_state = %{pro_state | conn_sup_pid: conn_sup_pid}
 
     {:ok, conn_info_pid} = Agent.start_link(fn -> %{} end)
@@ -97,68 +94,61 @@ defmodule NSQ.Producer do
       if pro_state.config.event_manager do
         pro_state.config.event_manager
       else
-        {:ok, manager} = GenEvent.start_link
+        {:ok, manager} = GenEvent.start_link()
         manager
       end
+
     pro_state = %{pro_state | event_manager_pid: manager}
 
     {:ok, _pro_state} = connect_to_nsqds(pro_state.config.nsqds, self(), pro_state)
   end
 
-
   @spec handle_call({:pub, binary}, any, pro_state) ::
-    {:reply, {:ok, binary}, pro_state}
+          {:reply, {:ok, binary}, pro_state}
   def handle_call({:pub, data}, _from, pro_state) do
     do_pub(pro_state.topic, data, pro_state)
   end
 
-
   @spec handle_call({:pub, binary, binary}, any, pro_state) ::
-    {:reply, {:ok, binary}, pro_state}
+          {:reply, {:ok, binary}, pro_state}
   def handle_call({:pub, topic, data}, _from, pro_state) do
     do_pub(topic, data, pro_state)
   end
 
-
   @spec handle_call({:mpub, binary}, any, pro_state) ::
-    {:reply, {:ok, binary}, pro_state}
+          {:reply, {:ok, binary}, pro_state}
   def handle_call({:mpub, data}, _from, pro_state) do
     do_mpub(pro_state.topic, data, pro_state)
   end
 
-
   @spec handle_call({:mpub, binary, binary}, any, pro_state) ::
-    {:reply, {:ok, binary}, pro_state}
+          {:reply, {:ok, binary}, pro_state}
   def handle_call({:mpub, topic, data}, _from, pro_state) do
     do_mpub(topic, data, pro_state)
   end
-
 
   @spec handle_call(:state, any, pro_state) :: {:reply, pro_state, pro_state}
   def handle_call(:state, _from, state) do
     {:reply, state, state}
   end
 
-
   # ------------------------------------------------------- #
   # API Definitions                                         #
   # ------------------------------------------------------- #
-  @spec start_link(binary, NSQ.Config.t, GenServer.options) :: {:ok, pid}
+  @spec start_link(binary, NSQ.Config.t(), GenServer.options()) :: {:ok, pid}
   def start_link(topic, config, genserver_options \\ []) do
     {:ok, config} = NSQ.Config.validate(config || %NSQ.Config{})
     {:ok, config} = NSQ.Config.normalize(config)
-    unless is_valid_topic_name?(topic), do: raise "Invalid topic name #{topic}"
+    unless is_valid_topic_name?(topic), do: raise("Invalid topic name #{topic}")
     state = %{@initial_state | topic: topic, config: config}
     GenServer.start_link(__MODULE__, state, genserver_options)
   end
 
-
   @spec get_connections(pro_state) :: [connection]
   def get_connections(pro_state) when is_map(pro_state) do
     children = Supervisor.which_children(pro_state.conn_sup_pid)
-    Enum.map children, fn({child_id, pid, _, _}) -> {child_id, pid} end
+    Enum.map(children, fn {child_id, pid, _, _} -> {child_id, pid} end)
   end
-
 
   @spec get_connections(pid, pro_state) :: [connection]
   def get_connections(pro, pro_state \\ nil) when is_pid(pro) do
@@ -166,27 +156,29 @@ defmodule NSQ.Producer do
     get_connections(pro_state)
   end
 
-
   @spec random_connection_pid(pro_state) :: pid
   def random_connection_pid(pro_state) do
     {_child_id, pid} = Enum.random(get_connections(pro_state))
     pid
   end
 
-
   @doc """
   Create supervised connections to NSQD.
   """
   @spec connect_to_nsqds([host_with_port], pid, pro_state) :: {:ok, pro_state}
   def connect_to_nsqds(nsqds, pro, pro_state) do
-    Enum.map nsqds, fn(nsqd) ->
-      {:ok, _conn} = NSQ.Connection.Supervisor.start_child(
-        pro, nsqd, pro_state, [restart: :permanent]
-      )
-    end
+    Enum.map(nsqds, fn nsqd ->
+      {:ok, _conn} =
+        NSQ.Connection.Supervisor.start_child(
+          pro,
+          nsqd,
+          pro_state,
+          restart: :permanent
+        )
+    end)
+
     {:ok, pro_state}
   end
-
 
   @doc """
   Get the current state of a producer. Used in tests. Not for external use.
@@ -196,7 +188,6 @@ defmodule NSQ.Producer do
     GenServer.call(producer, :state)
   end
 
-
   @doc """
   Publish data to whatever topic is the default.
   """
@@ -204,7 +195,6 @@ defmodule NSQ.Producer do
   def pub(sup_pid, data) do
     {:ok, _resp} = GenServer.call(get(sup_pid), {:pub, data})
   end
-
 
   @doc """
   Publish data to a specific topic.
@@ -214,7 +204,6 @@ defmodule NSQ.Producer do
     {:ok, _resp} = GenServer.call(get(sup_pid), {:pub, topic, data})
   end
 
-
   @doc """
   Publish data to whatever topic is the default.
   """
@@ -222,7 +211,6 @@ defmodule NSQ.Producer do
   def mpub(sup_pid, data) do
     GenServer.call(get(sup_pid), {:mpub, data})
   end
-
 
   @doc """
   Publish data to a specific topic.
@@ -232,19 +220,19 @@ defmodule NSQ.Producer do
     {:ok, _resp} = GenServer.call(get(sup_pid), {:mpub, topic, data})
   end
 
-
   @doc """
   The end-user will be targeting the supervisor, but it's the producer that
   can actually handle the command.
   """
   @spec get(pid) :: pid
   def get(sup_pid) do
-    child = Supervisor.which_children(sup_pid)
-      |> Enum.find(fn({kind, _, _, _}) -> kind == NSQ.Producer end)
+    child =
+      Supervisor.which_children(sup_pid)
+      |> Enum.find(fn {kind, _, _, _} -> kind == NSQ.Producer end)
+
     {_, pid, _, _} = child
     pid
   end
-
 
   # ------------------------------------------------------- #
   # Private Functions                                       #
@@ -252,17 +240,20 @@ defmodule NSQ.Producer do
   # Used to DRY up handle_call({:pub, ...).
   @spec do_pub(binary, binary, pro_state) :: {:reply, {:ok, binary}, pro_state}
   defp do_pub(topic, data, pro_state) do
-    {:ok, resp} = random_connection_pid(pro_state)
+    {:ok, resp} =
+      random_connection_pid(pro_state)
       |> NSQ.Connection.cmd({:pub, topic, data})
+
     {:reply, {:ok, resp}, pro_state}
   end
-
 
   # Used to DRY up handle_call({:mpub, ...).
   @spec do_mpub(binary, binary, pro_state) :: {:reply, {:ok, binary}, pro_state}
   defp do_mpub(topic, data, pro_state) do
-    {:ok, resp} = random_connection_pid(pro_state)
+    {:ok, resp} =
+      random_connection_pid(pro_state)
       |> NSQ.Connection.cmd({:mpub, topic, data})
+
     {:reply, {:ok, resp}, pro_state}
   end
 end

@@ -6,7 +6,6 @@ defmodule NSQ.Connection.MessageHandling do
   import NSQ.Protocol
   require Logger
 
-
   @doc """
   This is the recv loop that we kick off in a separate process immediately
   after the handshake. We send each incoming NSQ message as an erlang message
@@ -18,7 +17,8 @@ defmodule NSQ.Connection.MessageHandling do
         # If publishing is quiet, we won't receive any messages in the timeout.
         # This is fine. Let's just try again!
         conn_state |> recv_nsq_messages(conn)
-      {:ok, <<msg_size :: size(32)>>} ->
+
+      {:ok, <<msg_size::size(32)>>} ->
         # Got a message! Decode it and let the connection know. We just
         # received data on the socket to get the size of this message, so if we
         # timeout in here, that's probably indicative of a problem.
@@ -52,92 +52,94 @@ defmodule NSQ.Connection.MessageHandling do
     state |> kick_off_message_processing(data)
   end
 
-
-  @spec update_conn_stats_on_message_done(C.state, any) :: any
+  @spec update_conn_stats_on_message_done(C.state(), any) :: any
   def update_conn_stats_on_message_done(state, ret_val) do
-    ConnInfo.update state, fn(info) ->
+    ConnInfo.update(state, fn info ->
       info |> update_stats_from_ret_val(ret_val)
-    end
+    end)
   end
-
 
   @spec update_stats_from_ret_val(map, any) :: map
   defp update_stats_from_ret_val(info, ret_val) do
     info = %{info | messages_in_flight: info.messages_in_flight - 1}
+
     case ret_val do
       :ok ->
         %{info | finished_count: info.finished_count + 1}
+
       :fail ->
         %{info | failed_count: info.failed_count + 1}
+
       :req ->
         %{info | requeued_count: info.requeued_count + 1}
+
       {:req, _} ->
         %{info | requeued_count: info.requeued_count + 1}
+
       {:req, _, true} ->
-        %{info |
-          requeued_count: info.requeued_count + 1,
-          backoff_count: info.backoff_count + 1
-        }
+        %{info | requeued_count: info.requeued_count + 1, backoff_count: info.backoff_count + 1}
+
       {:req, _, _} ->
         %{info | requeued_count: info.requeued_count + 1}
     end
   end
 
-
-  @spec respond_to_heartbeat(C.state) :: :ok
+  @spec respond_to_heartbeat(C.state()) :: :ok
   defp respond_to_heartbeat(state) do
     GenEvent.notify(state.event_manager_pid, :heartbeat)
     state |> Buffer.send!(encode(:noop))
   end
 
-
-  @spec log_error(C.state, binary, binary) :: any
+  @spec log_error(C.state(), binary, binary) :: any
   defp log_error(state, reason, data) do
     GenEvent.notify(state.event_manager_pid, {:error, reason, data})
+
     if reason do
-      Logger.error "error: #{reason}\n#{inspect data}"
+      Logger.error("error: #{reason}\n#{inspect(data)}")
     else
-      Logger.error "error: #{inspect data}"
+      Logger.error("error: #{inspect(data)}")
     end
   end
 
-
-  @spec kick_off_message_processing(C.state, binary) :: {:ok, C.state}
+  @spec kick_off_message_processing(C.state(), binary) :: {:ok, C.state()}
   defp kick_off_message_processing(state, data) do
     message = NSQ.Message.from_data(data)
     state = received_message(state)
-    message = %NSQ.Message{message |
-      connection: self(),
-      consumer: state.parent,
-      reader: state.reader,
-      writer: state.writer,
-      config: state.config,
-      msg_timeout: state.msg_timeout,
-      event_manager_pid: state.event_manager_pid
+
+    message = %NSQ.Message{
+      message
+      | connection: self(),
+        consumer: state.parent,
+        reader: state.reader,
+        writer: state.writer,
+        config: state.config,
+        msg_timeout: state.msg_timeout,
+        event_manager_pid: state.event_manager_pid
     }
+
     GenEvent.notify(state.event_manager_pid, {:message, message})
     GenServer.cast(state.parent, {:maybe_update_rdy, state.nsqd})
     NSQ.Message.Supervisor.start_child(state.msg_sup_pid, message)
     {:ok, state}
   end
 
-
-  @spec received_message(C.state) :: C.state
+  @spec received_message(C.state()) :: C.state()
   defp received_message(state) do
-    ConnInfo.update state, fn(info) ->
-      %{info |
-        rdy_count: info.rdy_count - 1,
-        messages_in_flight: info.messages_in_flight + 1,
-        last_msg_timestamp: now()
+    ConnInfo.update(state, fn info ->
+      %{
+        info
+        | rdy_count: info.rdy_count - 1,
+          messages_in_flight: info.messages_in_flight + 1,
+          last_msg_timestamp: now()
       }
-    end
+    end)
+
     state
   end
 
-
   @spec now :: integer
   defp now do
-    {megasec, sec, microsec} = :os.timestamp
+    {megasec, sec, microsec} = :os.timestamp()
     1_000_000 * megasec + sec + microsec / 1_000_000
   end
 end

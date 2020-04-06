@@ -2,14 +2,16 @@ defmodule ElixirNsq.Mixfile do
   use Mix.Project
 
   def project do
-    [app: :elixir_nsq,
-     version: "1.1.0",
-     elixir: "~> 1.1",
-     description: description(),
-     package: package(),
-     build_embedded: Mix.env == :prod,
-     start_permanent: Mix.env == :prod,
-     deps: deps()]
+    [
+      app: :elixir_nsq,
+      version: "1.1.0",
+      elixir: "~> 1.1",
+      description: description(),
+      package: package(),
+      build_embedded: Mix.env() == :prod,
+      start_permanent: Mix.env() == :prod,
+      deps: deps()
+    ]
   end
 
   # Configuration for the OTP application
@@ -40,8 +42,7 @@ defmodule ElixirNsq.Mixfile do
 
       # Small HTTP server for running tests
       {:http_server, github: "parroty/http_server", only: :test},
-
-      {:ex_doc, ">= 0.0.0", only: :dev},
+      {:ex_doc, ">= 0.0.0", only: :dev}
     ]
   end
 
@@ -59,7 +60,7 @@ defmodule ElixirNsq.Mixfile do
       licenses: ["MIT"],
       links: %{
         "GitHub" => "https://github.com/wistia/elixir_nsq"
-      },
+      }
     ]
   end
 end

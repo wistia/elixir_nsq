@@ -12,8 +12,10 @@ defmodule NSQ.Consumer.Supervisor do
 
     children = [
       worker(NSQ.Consumer, [topic, channel, config, [name: consumer_name]]),
-      worker(Task, [NSQ.Consumer.Connections, :discovery_loop, [consumer_name]], id: discovery_loop_id),
-      worker(Task, [NSQ.Consumer.RDY, :redistribute_loop, [consumer_name]], id: rdy_loop_id),
+      worker(Task, [NSQ.Consumer.Connections, :discovery_loop, [consumer_name]],
+        id: discovery_loop_id
+      ),
+      worker(Task, [NSQ.Consumer.RDY, :redistribute_loop, [consumer_name]], id: rdy_loop_id)
     ]
 
     supervise(children, strategy: :rest_for_one)
