@@ -72,7 +72,7 @@ defmodule NSQ.Protocol do
     end
   end
 
-  @spec decode_as_message(binary) :: {atom, Map.t()} | {atom, String.t()}
+  @spec decode_as_message(binary) :: {atom, map()} | {atom, String.t()}
   def decode_as_message(data) do
     case data do
       <<timestamp::size(64), attempts::size(16), msg_id::size(128), rest::binary>> ->
