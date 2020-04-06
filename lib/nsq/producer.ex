@@ -135,8 +135,8 @@ defmodule NSQ.Producer do
   # ------------------------------------------------------- #
   # API Definitions                                         #
   # ------------------------------------------------------- #
-  @spec start_link(binary, NSQ.Config.t(), GenServer.options()) :: {:ok, pid}
-  def start_link(topic, config, genserver_options \\ []) do
+  @spec start_link({binary, NSQ.Config.t()}, GenServer.options()) :: {:ok, pid}
+  def start_link({topic, config}, genserver_options \\ []) do
     {:ok, config} = NSQ.Config.validate(config || %NSQ.Config{})
     {:ok, config} = NSQ.Config.normalize(config)
     unless is_valid_topic_name?(topic), do: raise("Invalid topic name #{topic}")

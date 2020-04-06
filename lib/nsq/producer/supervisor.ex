@@ -7,9 +7,9 @@ defmodule NSQ.Producer.Supervisor do
 
   def init({topic, config}) do
     children = [
-      worker(NSQ.Producer, [topic, config])
+      {NSQ.Producer, {topic, config}}
     ]
 
-    supervise(children, strategy: :one_for_one)
+    Supervisor.init(children, strategy: :one_for_one)
   end
 end
