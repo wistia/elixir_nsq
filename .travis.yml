@@ -1,16 +1,15 @@
 language: elixir
 
 elixir:
-  - "1.8"
-  - "1.9"
+  - "1.10"
 
 otp_release:
-  - "20.3"
-  - "21.3"
+  - "22.0"
 
 env:
   - NSQ_DOWNLOAD=nsq-0.3.8.linux-amd64.go1.6.2 NSQ_VER=v0.3.8 WORKER_ID=worker-id
   - NSQ_DOWNLOAD=nsq-1.0.0-compat.linux-amd64.go1.8 NSQ_VER=v1.0.0-compat WORKER_ID=node-id
+  - NSQ_DOWNLOAD=nsq-1.2.0-compat.linux-amd64.go1.12.9 NSQ_VER=v1.2.0-compat WORKER_ID=node-id
 
 before_install:
   - wget https://github.com/nsqio/nsq/releases/download/$NSQ_VER/$NSQ_DOWNLOAD.tar.gz
