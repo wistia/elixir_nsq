@@ -1,0 +1,47 @@
+name: Tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-20.04
+    strategy:
+      fail-fast: false
+      matrix:
+        elixir: ["1.13", "1.14"]
+        otp: ["23", "24", "25"]
+        include:
+          - nsq_download: nsq-0.3.8.linux-amd64.go1.6.2
+            nsq_version: v0.3.8
+            worker_id: worker-id
+          - nsq_download: nsq-1.0.0-compat.linux-amd64.go1.8
+            nsq_version: v1.0.0-compat
+            worker_id: node-id
+    env:
+      MIX_ENV: test
+      NSQ_DOWNLOAD: ${{ matrix.nsq_download }}
+      NSQ_VERSION: ${{ matrix.nsq_version }}
+      WORKER_ID: ${{ matrix.worker_id }}
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ matrix.otp }}
+          elixir-version: ${{ matrix.elixir }}
+      - run: mix deps.get
+      - run: mix compile
+      - run: mix run --no-halt -e "NSQ.Test.AuthServer.start(6790)" &
+      - run: $NSQ_DOWNLOAD/bin/nsqd --tcp-address=127.0.0.1:6750 --http-address=127.0.0.1:6751 --$WORKER_ID=512 --data-path=test/data_paths/512 --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:6770 --lookupd-tcp-address=127.0.0.1:6780 &
+      - run: $NSQ_DOWNLOAD/bin/nsqd --tcp-address=127.0.0.1:6760 --http-address=127.0.0.1:6761 --$WORKER_ID=513 --data-path=test/data_paths/513 --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:6770 --lookupd-tcp-address=127.0.0.1:6780 &
+      - run: $NSQ_DOWNLOAD/bin/nsqd --tcp-address=127.0.0.1:6765 --http-address=127.0.0.1:6766 --https-address=127.0.0.1:6767 --$WORKER_ID=514 --data-path=test/data_paths/514 --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:6770 --lookupd-tcp-address=127.0.0.1:6780 --tls-required=false --tls-root-ca-file=test/ssl_keys/elixirNsq.pem --tls-key=test/ssl_keys/elixir_nsq.key --tls-cert=test/ssl_keys/elixir_nsq.crt --auth-http-address=127.0.0.1:6790 &
+      - run: $NSQ_DOWNLOAD/bin/nsqlookupd --tcp-address=127.0.0.1:6770 --http-address=127.0.0.1:6771 --broadcast-address=127.0.0.1 &
+      - run: $NSQ_DOWNLOAD/bin/nsqlookupd --tcp-address=127.0.0.1:6780 --http-address=127.0.0.1:6781 --broadcast-address=127.0.0.1 &
+      - run: mix test
+
+
+
