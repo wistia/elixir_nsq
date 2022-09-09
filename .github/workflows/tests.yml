@@ -33,6 +33,8 @@ jobs:
         with:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
+      - run: wget https://github.com/nsqio/nsq/releases/download/$NSQ_VER/$NSQ_DOWNLOAD.tar.gz
+      - run: tar xvzf $NSQ_DOWNLOAD.tar.gz
       - run: mix deps.get
       - run: mix compile
       - run: mix run --no-halt -e "NSQ.Test.AuthServer.start(6790)" &
