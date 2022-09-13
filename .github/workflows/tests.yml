@@ -18,20 +18,18 @@ jobs:
             otp: "20.3"
           - elixir: "1.9"
             otp: "21.3"
-
-        otp: ["20.3", "21.3"]
-        include:
-          - nsq_download: nsq-0.3.8.linux-amd64.go1.6.2
-            nsq_version: v0.3.8
+        nsq:
+          - download: nsq-0.3.8.linux-amd64.go1.6.2
+            version: v0.3.8
             worker_id: worker-id
-          - nsq_download: nsq-1.0.0-compat.linux-amd64.go1.8
-            nsq_version: v1.0.0-compat
+          - download: nsq-1.0.0-compat.linux-amd64.go1.8
+            version: v1.0.0-compat
             worker_id: node-id
     env:
       MIX_ENV: test
-      NSQ_DOWNLOAD: ${{ matrix.nsq_download }}
-      NSQ_VERSION: ${{ matrix.nsq_version }}
-      WORKER_ID: ${{ matrix.worker_id }}
+      NSQ_DOWNLOAD: ${{ matrix.nsq.download }}
+      NSQ_VERSION: ${{ matrix.nsq.version }}
+      WORKER_ID: ${{ matrix.nsq.worker_id }}
 
     steps:
       - uses: actions/checkout@v3
