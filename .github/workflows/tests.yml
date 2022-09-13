@@ -12,8 +12,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        elixir: ["1.13", "1.14"]
-        otp: ["23", "24", "25"]
+        elixir: ["1.8", "1.9"]
+        otp: ["20.3", "21.3"]
         include:
           - nsq_download: nsq-0.3.8.linux-amd64.go1.6.2
             nsq_version: v0.3.8
