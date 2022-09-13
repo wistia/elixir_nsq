@@ -357,7 +357,7 @@ defmodule NSQ.ConsumerTest do
 
   def assert_receive_n_times(msg, times, delay) do
     if times > 0 do
-      assert_receive(msg, delay)
+      assert_receive(^msg, delay)
       assert_receive_n_times(msg, times - 1, delay)
     end
   end
