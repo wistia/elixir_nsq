@@ -1,0 +1,60 @@
+# Copied and modified from https://github.com/wistia/elixir_nsq/blob/b43616a08459451cc5afdcd9839b732cbc1dedfa/.travis.yml
+name: Tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-20.04
+    strategy:
+      fail-fast: false
+      matrix:
+        beam:
+          - elixir: "1.8"
+            otp: "20.3"
+          - elixir: "1.9"
+            otp: "21.3"
+        nsq:
+          - download: nsq-0.3.8.linux-amd64.go1.6.2
+            version: v0.3.8
+            worker_id: worker-id
+          - download: nsq-1.0.0-compat.linux-amd64.go1.8
+            version: v1.0.0-compat
+            worker_id: node-id
+    env:
+      MIX_ENV: test
+      NSQ_DOWNLOAD: ${{ matrix.nsq.download }}
+      NSQ_VERSION: ${{ matrix.nsq.version }}
+      WORKER_ID: ${{ matrix.nsq.worker_id }}
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ matrix.beam.otp }}
+          elixir-version: ${{ matrix.beam.elixir }}
+      - name: "install NSQ"
+        run: |
+          wget https://github.com/nsqio/nsq/releases/download/$NSQ_VERSION/$NSQ_DOWNLOAD.tar.gz
+          tar xvzf $NSQ_DOWNLOAD.tar.gz
+      - name: "get and compile dependencies"
+        run: |
+          mix deps.get
+          mix compile
+      - name: "start daemons"
+        run: |
+          mix run --no-halt -e "NSQ.Test.AuthServer.start(6790)" &
+          $NSQ_DOWNLOAD/bin/nsqd --tcp-address=127.0.0.1:6750 --http-address=127.0.0.1:6751 --$WORKER_ID=512 --data-path=test/data_paths/512 --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:6770 --lookupd-tcp-address=127.0.0.1:6780 &
+          $NSQ_DOWNLOAD/bin/nsqd --tcp-address=127.0.0.1:6760 --http-address=127.0.0.1:6761 --$WORKER_ID=513 --data-path=test/data_paths/513 --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:6770 --lookupd-tcp-address=127.0.0.1:6780 &
+          $NSQ_DOWNLOAD/bin/nsqd --tcp-address=127.0.0.1:6765 --http-address=127.0.0.1:6766 --https-address=127.0.0.1:6767 --$WORKER_ID=514 --data-path=test/data_paths/514 --broadcast-address=127.0.0.1 --lookupd-tcp-address=127.0.0.1:6770 --lookupd-tcp-address=127.0.0.1:6780 --tls-required=false --tls-root-ca-file=test/ssl_keys/elixirNsq.pem --tls-key=test/ssl_keys/elixir_nsq.key --tls-cert=test/ssl_keys/elixir_nsq.crt --auth-http-address=127.0.0.1:6790 &
+          $NSQ_DOWNLOAD/bin/nsqlookupd --tcp-address=127.0.0.1:6770 --http-address=127.0.0.1:6771 --broadcast-address=127.0.0.1 &
+          $NSQ_DOWNLOAD/bin/nsqlookupd --tcp-address=127.0.0.1:6780 --http-address=127.0.0.1:6781 --broadcast-address=127.0.0.1 &
+      - name: "run tests"
+        run: mix test
+
+
+
