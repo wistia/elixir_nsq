@@ -13,7 +13,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        elixir: ["1.8", "1.9"]
+        beam:
+          - elixir: "1.8"
+            otp: "20.3"
+          - elixir: "1.9"
+            otp: "21.3"
+
         otp: ["20.3", "21.3"]
         include:
           - nsq_download: nsq-0.3.8.linux-amd64.go1.6.2
@@ -32,8 +37,8 @@ jobs:
       - uses: actions/checkout@v3
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: ${{ matrix.otp }}
-          elixir-version: ${{ matrix.elixir }}
+          otp-version: ${{ matrix.beam.otp }}
+          elixir-version: ${{ matrix.beam.elixir }}
       - name: "install NSQ"
         run: |
           wget https://github.com/nsqio/nsq/releases/download/$NSQ_VERSION/$NSQ_DOWNLOAD.tar.gz
