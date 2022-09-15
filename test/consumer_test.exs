@@ -1,10 +1,18 @@
 defmodule NSQ.ConsumerTest do
   defmodule EventForwarder do
-    use GenEvent
+    @behaviour :gen_event
+
+    def init(args) do
+      {:ok, args}
+    end
 
     def handle_event(event, parent) do
       send parent, event
       {:ok, parent}
+    end
+
+    def handle_call(_event, _state) do
+      raise "not implemented"
     end
   end
 
@@ -47,7 +55,7 @@ defmodule NSQ.ConsumerTest do
     })
 
     NSQ.Consumer.event_manager(consumer)
-      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self())
+      |> :gen_event.add_handler(NSQ.ConsumerTest.EventForwarder, self())
 
     HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", [body: "hello"])
     assert_receive {:message_finished, _}, 2000
@@ -73,7 +81,7 @@ defmodule NSQ.ConsumerTest do
     })
 
     NSQ.Consumer.event_manager(consumer)
-      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self())
+      |> :gen_event.add_handler(NSQ.ConsumerTest.EventForwarder, self())
 
     HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", [body: "hello"])
 
@@ -157,7 +165,7 @@ defmodule NSQ.ConsumerTest do
     })
 
     NSQ.Consumer.event_manager(consumer)
-      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self())
+      |> :gen_event.add_handler(NSQ.ConsumerTest.EventForwarder, self())
 
     HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", [body: "HTTP message"])
     assert_receive(:handled, 2000)
@@ -183,7 +191,7 @@ defmodule NSQ.ConsumerTest do
     })
 
     NSQ.Consumer.event_manager(consumer)
-      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self())
+      |> :gen_event.add_handler(NSQ.ConsumerTest.EventForwarder, self())
 
     [info] = NSQ.Consumer.conn_info(consumer) |> Map.values
     previous_timestamp = info.last_msg_timestamp
@@ -408,7 +416,7 @@ defmodule NSQ.ConsumerTest do
     })
 
     NSQ.Consumer.event_manager(sup_pid)
-      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self())
+      |> :gen_event.add_handler(NSQ.ConsumerTest.EventForwarder, self())
 
     consumer = Cons.get(sup_pid)
     cons_state = Cons.get_state(consumer)
@@ -612,7 +620,7 @@ defmodule NSQ.ConsumerTest do
     })
 
     NSQ.Consumer.event_manager(consumer)
-      |> GenEvent.add_handler(NSQ.ConsumerTest.EventForwarder, self())
+      |> :gen_event.add_handler(NSQ.ConsumerTest.EventForwarder, self())
 
     # Nothing is in flight, not starved
     assert NSQ.Consumer.starved?(consumer) == false

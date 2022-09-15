@@ -169,7 +169,7 @@ defmodule NSQ.Consumer do
       if cons_state.config.event_manager do
         cons_state.config.event_manager
       else
-        {:ok, manager} = GenEvent.start_link
+        {:ok, manager} = :gen_event.start_link
         manager
       end
     cons_state = %{cons_state | event_manager_pid: manager}
@@ -344,7 +344,7 @@ defmodule NSQ.Consumer do
   @doc """
   If the event manager is not defined in NSQ.Config, it will be generated. So
   if you want to attach event handlers on the fly, you can use a syntax like
-  `NSQ.Consumer.event_manager(consumer) |> GenEvent.add_handler(MyHandler, [])`
+  `NSQ.Consumer.event_manager(consumer) |> :gen_event.add_handler(MyHandler, [])`
   """
   def event_manager(sup_pid) do
     cons = get(sup_pid)

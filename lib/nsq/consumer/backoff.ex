@@ -87,7 +87,7 @@ defmodule NSQ.Consumer.Backoff do
       {:ok, new_state} = RDY.update(cons, conn, 0, last_state)
       new_state
     end
-    GenEvent.notify(cons_state.event_manager_pid, backoff_signal)
+    :gen_event.notify(cons_state.event_manager_pid, backoff_signal)
     {:ok, _cons_state} = resume_later(cons, backoff_duration, cons_state)
   end
 
@@ -120,7 +120,7 @@ defmodule NSQ.Consumer.Backoff do
       {:ok, new_state} = RDY.update(cons, conn, count, last_state)
       new_state
     end
-    GenEvent.notify(cons_state.event_manager_pid, :resume)
+    :gen_event.notify(cons_state.event_manager_pid, :resume)
     {:ok, cons_state}
   end
 
