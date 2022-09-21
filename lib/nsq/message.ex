@@ -97,7 +97,7 @@ defmodule NSQ.Message do
   def fin(message) do
     Logger.debug("(#{inspect message.connection}) fin msg ID #{message.id}")
     message |> Buffer.send!(encode({:fin, message.id}))
-    GenEvent.notify(message.event_manager_pid, {:message_finished, message})
+    :gen_event.notify(message.event_manager_pid, {:message_finished, message})
     GenServer.call(message.consumer, {:start_stop_continue_backoff, :resume})
   end
 
@@ -137,7 +137,7 @@ defmodule NSQ.Message do
     end
 
     message |> Buffer.send!(encode({:req, message.id, delay}))
-    GenEvent.notify(message.event_manager_pid, {:message_requeued, message})
+    :gen_event.notify(message.event_manager_pid, {:message_requeued, message})
   end
 
 
@@ -244,7 +244,7 @@ defmodule NSQ.Message do
         # If we've waited this long, we can assume NSQD will requeue the
         # message on its own.
         Logger.warn "Msg #{message.id} timed out, quit processing it and expect nsqd to requeue"
-        GenEvent.notify(message.event_manager_pid, {:message_requeued, message})
+        :gen_event.notify(message.event_manager_pid, {:message_requeued, message})
         unlink_and_exit(message.parent)
         {:ok, :req}
     end

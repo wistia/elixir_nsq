@@ -97,7 +97,7 @@ defmodule NSQ.Producer do
       if pro_state.config.event_manager do
         pro_state.config.event_manager
       else
-        {:ok, manager} = GenEvent.start_link
+        {:ok, manager} = :gen_event.start_link
         manager
       end
     pro_state = %{pro_state | event_manager_pid: manager}

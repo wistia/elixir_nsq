@@ -119,12 +119,20 @@ and perform actions based on that info.
 
 ```elixir
 defmodule EventForwarder do
-  use GenEvent
+    @behaviour :gen_event
 
-  def handle_event(event, parent) do
-    send parent, event
-    {:ok, parent}
-  end
+    def init(args) do
+      {:ok, args}
+    end
+
+    def handle_event(event, parent) do
+      send parent, event
+      {:ok, parent}
+    end
+
+    def handle_call(_event, _state) do
+      raise "not implemented"
+    end
 end
 
 def setup_consumer do

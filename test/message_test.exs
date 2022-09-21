@@ -9,7 +9,7 @@ defmodule NSQ.MessageTest do
   def build_raw_nsq_data(attrs \\ %{}) do
     timestamp = attrs[:timestamp] || now()
     attempts = attrs[:attempts] || 0
-    msg_id = attrs[:id] || String.ljust(SecureRandom.hex(8), 16, ?0)
+    msg_id = attrs[:id] || String.pad_trailing(SecureRandom.hex(8), 16, "0")
     data = attrs[:body] || "test data"
 
     <<timestamp :: size(64)>>

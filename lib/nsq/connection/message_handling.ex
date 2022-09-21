@@ -86,14 +86,14 @@ defmodule NSQ.Connection.MessageHandling do
 
   @spec respond_to_heartbeat(C.state) :: :ok
   defp respond_to_heartbeat(state) do
-    GenEvent.notify(state.event_manager_pid, :heartbeat)
+    :gen_event.notify(state.event_manager_pid, :heartbeat)
     state |> Buffer.send!(encode(:noop))
   end
 
 
   @spec log_error(C.state, binary, binary) :: any
   defp log_error(state, reason, data) do
-    GenEvent.notify(state.event_manager_pid, {:error, reason, data})
+    :gen_event.notify(state.event_manager_pid, {:error, reason, data})
     if reason do
       Logger.error "error: #{reason}\n#{inspect data}"
     else
@@ -115,7 +115,7 @@ defmodule NSQ.Connection.MessageHandling do
       msg_timeout: state.msg_timeout,
       event_manager_pid: state.event_manager_pid
     }
-    GenEvent.notify(state.event_manager_pid, {:message, message})
+    :gen_event.notify(state.event_manager_pid, {:message, message})
     GenServer.cast(state.parent, {:maybe_update_rdy, state.nsqd})
     NSQ.Message.Supervisor.start_child(state.msg_sup_pid, message)
     {:ok, state}
