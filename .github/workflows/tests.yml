@@ -14,10 +14,10 @@ jobs:
       fail-fast: false
       matrix:
         beam:
-          - elixir: "1.8"
-            otp: "20.3"
-          - elixir: "1.9"
-            otp: "21.3"
+          - elixir: "1.14.0"
+            otp: "25.1"
+          - elixir: "1.13.4"
+            otp: "25.1"
         nsq:
           - download: nsq-0.3.8.linux-amd64.go1.6.2
             version: v0.3.8
