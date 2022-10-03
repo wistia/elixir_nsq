@@ -682,7 +682,7 @@ defmodule NSQ.ConsumerTest do
     assert_receive(:handled, 2000)
   end
 
-  test "deflate + ssl + auth" do
+  test "deflate + tls + auth" do
     test_pid = self()
     NSQ.Consumer.Supervisor.start_link(@test_topic, @test_channel1, %NSQ.Config{
       nsqds: [{"127.0.0.1", 6765}],
@@ -691,6 +691,7 @@ defmodule NSQ.ConsumerTest do
       tls_insecure_skip_verify: true,
       tls_cert: "#{__DIR__}/ssl_keys/elixir_nsq.crt",
       tls_key: "#{__DIR__}/ssl_keys/elixir_nsq.key",
+      tls_min_version: :tlsv1,
       auth_secret: "abc",
       max_reconnect_attempts: 0,
       message_handler: fn(body, msg) ->
