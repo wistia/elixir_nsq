@@ -288,7 +288,7 @@ defmodule NSQ.Consumer.Connections do
     if is_integer(active) do
       active
     else
-      Logger.warn "(#{inspect self()}) non-integer #{inspect active} returned counting connections, returning 0 instead"
+      Logger.warning "(#{inspect self()}) non-integer #{inspect active} returned counting connections, returning 0 instead"
       0
     end
   end

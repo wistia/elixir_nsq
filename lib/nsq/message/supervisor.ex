@@ -27,4 +27,3 @@ defmodule NSQ.Message.Supervisor do
     supervise([], strategy: :one_for_one)
   end
 end
-

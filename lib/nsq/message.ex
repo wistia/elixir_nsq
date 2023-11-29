@@ -124,7 +124,7 @@ defmodule NSQ.Message do
 
     delay =
       if delay > message.config.max_requeue_delay do
-        Logger.warn "Invalid requeue delay #{delay}. Must be between 0 and #{message.config.max_requeue_delay}. Sending with max delay #{message.config.max_requeue_delay} instead."
+        Logger.warning "Invalid requeue delay #{delay}. Must be between 0 and #{message.config.max_requeue_delay}. Sending with max delay #{message.config.max_requeue_delay} instead."
         message.config.max_requeue_delay
       else
         delay
@@ -194,16 +194,16 @@ defmodule NSQ.Message do
     rescue
       e ->
         Logger.error "Error running message handler: #{inspect e}"
-        Logger.error inspect System.stacktrace
+        Logger.error inspect __STACKTRACE__
         {:req, -1, true}
     catch
       :exit, b ->
         Logger.error "Caught exit running message handler: :exit, #{inspect b}"
-        Logger.error inspect System.stacktrace
+        Logger.error inspect __STACKTRACE__
         {:req, -1, true}
       a, b ->
         Logger.error "Caught exception running message handler: #{inspect a}, #{inspect b}"
-        Logger.error inspect System.stacktrace
+        Logger.error inspect __STACKTRACE__
         {:req, -1, true}
     end
   end
@@ -213,7 +213,7 @@ defmodule NSQ.Message do
     case ret_val do
       :ok -> fin(message)
       :fail ->
-        Logger.warn("msg #{message.id} attempted #{message.attempts} times, giving up")
+        Logger.warning("msg #{message.id} attempted #{message.attempts} times, giving up")
         fin(message)
       :req -> req(message)
       {:req, delay} -> req(message, delay)
@@ -243,7 +243,7 @@ defmodule NSQ.Message do
       message.msg_timeout ->
         # If we've waited this long, we can assume NSQD will requeue the
         # message on its own.
-        Logger.warn "Msg #{message.id} timed out, quit processing it and expect nsqd to requeue"
+        Logger.warning "Msg #{message.id} timed out, quit processing it and expect nsqd to requeue"
         :gen_event.notify(message.event_manager_pid, {:message_requeued, message})
         unlink_and_exit(message.parent)
         {:ok, :req}

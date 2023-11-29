@@ -57,13 +57,13 @@ defmodule NSQ.Consumer.Backoff do
       if Connections.count(cons_state) == 0 do
         # This could happen if nsqlookupd suddenly stops discovering
         # connections. Maybe a network partition?
-        Logger.warn("no connection available to resume")
-        Logger.warn("backing off for 1 second")
+        Logger.warning("no connection available to resume")
+        Logger.warning("backing off for 1 second")
         resume_later(cons, 1000, cons_state)
       else
         # pick a random connection to test the waters
         conn = random_connection_for_backoff(cons_state)
-        Logger.warn("(#{inspect conn}) backoff timeout expired, sending RDY 1")
+        Logger.warning("(#{inspect conn}) backoff timeout expired, sending RDY 1")
 
         # while in backoff only ever let 1 message at a time through
         RDY.update(cons, conn, 1, cons_state)
@@ -81,7 +81,7 @@ defmodule NSQ.Consumer.Backoff do
   @spec backoff(pid, C.state, boolean) :: {:ok, C.state}
   defp backoff(cons, cons_state, backoff_signal) do
     backoff_duration = calculate_backoff(cons_state)
-    Logger.warn "backing off for #{backoff_duration / 1000} seconds (backoff level #{cons_state.backoff_counter}), setting all to RDY 0"
+    Logger.warning "backing off for #{backoff_duration / 1000} seconds (backoff level #{cons_state.backoff_counter}), setting all to RDY 0"
     # send RDY 0 immediately (to *all* connections)
     cons_state = Enum.reduce Connections.get(cons_state), cons_state, fn(conn, last_state) ->
       {:ok, new_state} = RDY.update(cons, conn, 0, last_state)
@@ -115,7 +115,7 @@ defmodule NSQ.Consumer.Backoff do
   @spec exit_backoff(pid, C.state) :: {:ok, C.state}
   defp exit_backoff(cons, cons_state) do
     count = per_conn_max_in_flight(cons_state)
-    Logger.warn "exiting backoff, returning all to RDY #{count}"
+    Logger.warning "exiting backoff, returning all to RDY #{count}"
     cons_state = Enum.reduce Connections.get(cons_state), cons_state, fn(conn, last_state) ->
       {:ok, new_state} = RDY.update(cons, conn, count, last_state)
       new_state

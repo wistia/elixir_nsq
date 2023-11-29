@@ -195,7 +195,7 @@ defmodule NSQ.Connection do
     # either way, we're exiting
     case result do
       :ok ->
-        Logger.warn "#{inspect conn}: No more messages in flight. Exiting."
+        Logger.warning "#{inspect conn}: No more messages in flight. Exiting."
       :timeout ->
         Logger.error "#{inspect conn}: Timed out waiting for messages to finish. Exiting anyway."
     end

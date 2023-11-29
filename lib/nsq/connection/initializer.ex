@@ -10,7 +10,7 @@ defmodule NSQ.Connection.Initializer do
 
   @project ElixirNsq.Mixfile.project
   @user_agent "#{@project[:app]}/#{@project[:version]}"
-  @ssl_versions [:sslv3, :tlsv1, :"tlsv1.1", :"tlsv1.2"] |> Enum.with_index
+  @ssl_versions [:tlsv1, :"tlsv1.1", :"tlsv1.2", :"tlsv1.3"] |> Enum.with_index
 
 
   @spec connect(%{nsqd: C.host_with_port}) :: {:ok, C.state} | {:error, String.t}
@@ -33,11 +33,11 @@ defmodule NSQ.Connection.Initializer do
           {:ok, %{state | connected: true}}
         {:error, reason} ->
           if length(state.config.nsqlookupds) > 0 do
-            Logger.warn "(#{inspect self()}) connect failed; #{reason}; discovery loop should respawn"
+            Logger.warning "(#{inspect self()}) connect failed; #{reason}; discovery loop should respawn"
             {{:error, reason}, %{state | connect_attempts: state.connect_attempts + 1}}
           else
             if state.config.max_reconnect_attempts > 0 do
-              Logger.warn "(#{inspect self()}) connect failed; #{reason}; discovery loop should respawn"
+              Logger.warning "(#{inspect self()}) connect failed; #{reason}; discovery loop should respawn"
               {{:error, reason}, %{state | connect_attempts: state.connect_attempts + 1}}
             else
               Logger.error "(#{inspect self()}) connect failed; #{reason}; reconnect turned off; terminating connection"
@@ -116,8 +116,8 @@ defmodule NSQ.Connection.Initializer do
     z = :zlib.open
     :ok = z |> :zlib.inflateInit(-15)
     inflated = z |> :zlib.inflateChunk(data)
-    Logger.warn "inflated chunk?"
-    Logger.warn inspect inflated
+    Logger.warning "inflated chunk?"
+    Logger.warning inspect inflated
     :ok = z |> :zlib.inflateEnd
     :ok = z |> :zlib.close
     inflated

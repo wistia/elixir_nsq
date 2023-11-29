@@ -2,16 +2,18 @@ defmodule NSQ.ProducerTest do
   use ExUnit.Case, async: true
   doctest NSQ.Producer
 
+  alias Tesla, as: HTTP
+
   @test_topic "__nsq_producer_test_topic__"
   @test_channel1 "__nsq_producer_test_channel1__"
   @configured_nsqds ["127.0.0.1:6750", "127.0.0.1:6760"]
 
   setup do
     Logger.configure(level: :warn)
-    HTTPotion.post("http://127.0.0.1:6751/topic/delete?topic=#{@test_topic}")
-    HTTPotion.post("http://127.0.0.1:6761/topic/delete?topic=#{@test_topic}")
-    HTTPotion.post("http://127.0.0.1:6771/topic/delete?topic=#{@test_topic}")
-    HTTPotion.post("http://127.0.0.1:6781/topic/delete?topic=#{@test_topic}")
+    HTTP.post("http://127.0.0.1:6751/topic/delete", query: [topic: @test_topic])
+    HTTP.post("http://127.0.0.1:6761/topic/delete", query: [topic: @test_topic])
+    HTTP.post("http://127.0.0.1:6771/topic/delete", query: [topic: @test_topic])
+    HTTP.post("http://127.0.0.1:6781/topic/delete", query: [topic: @test_topic])
     :ok
   end
 
