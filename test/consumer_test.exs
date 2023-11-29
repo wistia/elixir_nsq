@@ -567,8 +567,8 @@ defmodule NSQ.ConsumerTest do
       nsqds: [{"127.0.0.1", 6750}],
       tls_v1: true,
       tls_insecure_skip_verify: true,
-      tls_cert: "#{__DIR__}/ssl_keys/elixir_nsq.crt",
-      tls_key: "#{__DIR__}/ssl_keys/elixir_nsq.key",
+      tls_cert: "#{__DIR__}/ssl_keys/nsq-server-cert.pem",
+      tls_key: "#{__DIR__}/ssl_keys/nsq-server-key.pem",
       tls_min_version: :tlsv1,
       max_reconnect_attempts: 0,
       message_handler: fn(body, msg) ->
@@ -593,8 +593,8 @@ defmodule NSQ.ConsumerTest do
         nsqds: [{"127.0.0.1", 6750}],
         tls_v1: true,
         tls_insecure_skip_verify: false,
-        tls_cert: "#{__DIR__}/ssl_keys/elixir_nsq.crt",
-        tls_key: "#{__DIR__}/ssl_keys/elixir_nsq.key",
+        tls_cert: "#{__DIR__}/ssl_keys/nsq-server-cert.pem",
+        tls_key: "#{__DIR__}/ssl_keys/nsq-server-key.pem",
         max_reconnect_attempts: 0,
         message_handler: fn(body, msg) ->
           assert body == "HTTP message"
