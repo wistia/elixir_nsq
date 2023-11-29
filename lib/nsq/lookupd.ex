@@ -58,8 +58,14 @@ defmodule NSQ.Lookupd do
   @spec normalize_200_response([any], binary) :: response
   defp normalize_200_response(headers, body) do
     body = if body == nil || body == "", do: "{}", else: body
+    content_type_header = headers
+      |> Enum.find(fn {key, _value} -> key == "x-nsq-content-type" end)
+    content_type_header_val = case content_type_header do
+      {_, val} -> val
+      _ -> ""
+    end
 
-    if headers[:"X-Nsq-Content-Type"] == "nsq; version=1.0" do
+    if content_type_header_val == "nsq; version=1.0" do
       Poison.decode!(body)
       |> normalize_response
     else
