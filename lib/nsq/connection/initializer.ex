@@ -10,7 +10,7 @@ defmodule NSQ.Connection.Initializer do
 
   @project ElixirNsq.Mixfile.project
   @user_agent "#{@project[:app]}/#{@project[:version]}"
-  @ssl_versions [:tlsv1, :"tlsv1.1", :"tlsv1.2"] |> Enum.with_index
+  @ssl_versions [:sslv3, :tlsv1, :"tlsv1.1", :"tlsv1.2"] |> Enum.with_index
 
 
   @spec connect(%{nsqd: C.host_with_port}) :: {:ok, C.state} | {:error, String.t}
@@ -115,7 +115,7 @@ defmodule NSQ.Connection.Initializer do
   def inflate(data) do
     z = :zlib.open
     :ok = z |> :zlib.inflateInit(-15)
-    inflated = z |> :zlib.safeInflate(data)
+    inflated = z |> :zlib.inflateChunk(data)
     Logger.warn "inflated chunk?"
     Logger.warn inspect inflated
     :ok = z |> :zlib.inflateEnd
