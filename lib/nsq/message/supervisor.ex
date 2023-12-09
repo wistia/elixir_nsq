@@ -5,7 +5,6 @@ defmodule NSQ.Message.Supervisor do
   # ------------------------------------------------------- #
   # Directives                                              #
   # ------------------------------------------------------- #
-  require Logger
   use Supervisor
 
   # ------------------------------------------------------- #
@@ -27,4 +26,3 @@ defmodule NSQ.Message.Supervisor do
     supervise([], strategy: :one_for_one)
   end
 end
-

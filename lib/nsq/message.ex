@@ -2,7 +2,6 @@ defmodule NSQ.Message do
   # ------------------------------------------------------- #
   # Directives                                              #
   # ------------------------------------------------------- #
-  require Logger
   import NSQ.Protocol
   alias NSQ.Connection.Buffer
   use GenServer
@@ -95,7 +94,7 @@ defmodule NSQ.Message do
   been exhausted.
   """
   def fin(message) do
-    Logger.debug("(#{inspect message.connection}) fin msg ID #{message.id}")
+    NSQ.Logger.debug("(#{inspect message.connection}) fin msg ID #{message.id}")
     message |> Buffer.send!(encode({:fin, message.id}))
     :gen_event.notify(message.event_manager_pid, {:message_finished, message})
     GenServer.call(message.consumer, {:start_stop_continue_backoff, :resume})
@@ -115,16 +114,16 @@ defmodule NSQ.Message do
         delay = calculate_delay(
           message.attempts, message.config.max_requeue_delay
         )
-        Logger.debug("(#{inspect message.connection}) requeue msg ID #{message.id}, delay #{delay} (auto-calculated with attempts #{message.attempts}), backoff #{backoff}")
+        NSQ.Logger.debug("(#{inspect message.connection}) requeue msg ID #{message.id}, delay #{delay} (auto-calculated with attempts #{message.attempts}), backoff #{backoff}")
         delay
       else
-        Logger.debug("(#{inspect message.connection}) requeue msg ID #{message.id}, delay #{delay}, backoff #{backoff}")
+        NSQ.Logger.debug("(#{inspect message.connection}) requeue msg ID #{message.id}, delay #{delay}, backoff #{backoff}")
         delay
       end
 
     delay =
       if delay > message.config.max_requeue_delay do
-        Logger.warn "Invalid requeue delay #{delay}. Must be between 0 and #{message.config.max_requeue_delay}. Sending with max delay #{message.config.max_requeue_delay} instead."
+        NSQ.Logger.warn "Invalid requeue delay #{delay}. Must be between 0 and #{message.config.max_requeue_delay}. Sending with max delay #{message.config.max_requeue_delay} instead."
         message.config.max_requeue_delay
       else
         delay
@@ -147,7 +146,7 @@ defmodule NSQ.Message do
   message until the process finishes.
   """
   def touch(message) do
-    Logger.debug("(#{inspect message.connection}) touch msg ID #{message.id}")
+    NSQ.Logger.debug("(#{inspect message.connection}) touch msg ID #{message.id}")
     message |> Buffer.send!(encode({:touch, message.id}))
     send(message.parent, {:message_touch, message})
   end
@@ -193,17 +192,17 @@ defmodule NSQ.Message do
       result
     rescue
       e ->
-        Logger.error "Error running message handler: #{inspect e}"
-        Logger.error inspect System.stacktrace
+        NSQ.Logger.error "Error running message handler: #{inspect e}"
+        NSQ.Logger.error inspect System.stacktrace
         {:req, -1, true}
     catch
       :exit, b ->
-        Logger.error "Caught exit running message handler: :exit, #{inspect b}"
-        Logger.error inspect System.stacktrace
+        NSQ.Logger.error "Caught exit running message handler: :exit, #{inspect b}"
+        NSQ.Logger.error inspect System.stacktrace
         {:req, -1, true}
       a, b ->
-        Logger.error "Caught exception running message handler: #{inspect a}, #{inspect b}"
-        Logger.error inspect System.stacktrace
+        NSQ.Logger.error "Caught exception running message handler: #{inspect a}, #{inspect b}"
+        NSQ.Logger.error inspect System.stacktrace
         {:req, -1, true}
     end
   end
@@ -213,13 +212,13 @@ defmodule NSQ.Message do
     case ret_val do
       :ok -> fin(message)
       :fail ->
-        Logger.warn("msg #{message.id} attempted #{message.attempts} times, giving up")
+        NSQ.Logger.warn("msg #{message.id} attempted #{message.attempts} times, giving up")
         fin(message)
       :req -> req(message)
       {:req, delay} -> req(message, delay)
       {:req, delay, backoff} -> req(message, delay, backoff)
       _ ->
-        Logger.error "Unexpected handler result #{inspect ret_val}, requeueing message #{message.id}"
+        NSQ.Logger.error "Unexpected handler result #{inspect ret_val}, requeueing message #{message.id}"
         req(message)
     end
     ret_val
@@ -234,7 +233,7 @@ defmodule NSQ.Message do
       {:message_done, _msg, ret_val} ->
         {:ok, ret_val}
       {:message_touch, _msg} ->
-        Logger.debug "Msg #{message.id} received TOUCH, starting a new wait..."
+        NSQ.Logger.debug "Msg #{message.id} received TOUCH, starting a new wait..."
         # If NSQ.Message.touch(msg) is called, we will send TOUCH msg_id to
         # NSQD, but we also need to reset our timeout on the client to avoid
         # processes that hang forever.
@@ -243,7 +242,7 @@ defmodule NSQ.Message do
       message.msg_timeout ->
         # If we've waited this long, we can assume NSQD will requeue the
         # message on its own.
-        Logger.warn "Msg #{message.id} timed out, quit processing it and expect nsqd to requeue"
+        NSQ.Logger.warn "Msg #{message.id} timed out, quit processing it and expect nsqd to requeue"
         :gen_event.notify(message.event_manager_pid, {:message_requeued, message})
         unlink_and_exit(message.parent)
         {:ok, :req}

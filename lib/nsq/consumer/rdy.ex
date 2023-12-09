@@ -5,7 +5,6 @@ defmodule NSQ.Consumer.RDY do
   """
 
 
-  require Logger
   alias NSQ.ConnInfo
   alias NSQ.Consumer, as: C
   alias NSQ.Consumer.Connections
@@ -35,7 +34,7 @@ defmodule NSQ.Consumer.RDY do
     if cons_state.backoff_counter > 0 || cons_state.backoff_duration > 0 do
       # In backoff mode, we only let `start_stop_continue_backoff/3` handle
       # this case.
-      Logger.debug """
+      NSQ.Logger.debug """
         (#{inspect conn}) skip sending RDY in_backoff:#{cons_state.backoff_counter} || in_backoff_timeout:#{cons_state.backoff_duration}
       """
       {:ok, cons_state}
@@ -46,13 +45,13 @@ defmodule NSQ.Consumer.RDY do
       desired_rdy = per_conn_max_in_flight(cons_state)
 
       if remain <= 1 || remain < (last_rdy / 4) || (desired_rdy > 0 && desired_rdy < remain) do
-        Logger.debug """
+        NSQ.Logger.debug """
           (#{inspect conn}) sending RDY #{desired_rdy} \
           (#{remain} remain from last RDY #{last_rdy})
         """
         {:ok, _cons_state} = update(cons, conn, desired_rdy, cons_state)
       else
-        Logger.debug """
+        NSQ.Logger.debug """
           (#{inspect conn}) skip sending RDY #{desired_rdy} \
           (#{remain} remain out of last RDY #{last_rdy})
         """
@@ -116,7 +115,7 @@ defmodule NSQ.Consumer.RDY do
   @spec retry(pid, C.connection, integer, C.state) :: {:ok, C.state}
   def retry(cons, conn, count, cons_state) do
     delay = cons_state.config.rdy_retry_delay
-    Logger.debug("(#{inspect conn}) retry RDY in #{delay / 1000} seconds")
+    NSQ.Logger.debug("(#{inspect conn}) retry RDY in #{delay / 1000} seconds")
 
     {:ok, retry_pid} = Task.start_link fn ->
       :timer.sleep(delay)
@@ -160,21 +159,21 @@ defmodule NSQ.Consumer.RDY do
       conn_count = length(conns)
 
       if conn_count > cons_state.max_in_flight do
-        Logger.debug """
+        NSQ.Logger.debug """
           redistributing RDY state
           (#{conn_count} conns > #{cons_state.max_in_flight} max_in_flight)
         """
       end
 
       if cons_state.backoff_counter > 0 && conn_count > 1 do
-        Logger.debug """
+        NSQ.Logger.debug """
           redistributing RDY state (in backoff and #{conn_count} conns > 1)
         """
       end
 
       # Free up any connections that are RDY but not processing messages.
       Connections.idle_with_rdy(cons_state) |> Enum.map(fn(conn) ->
-        Logger.debug("(#{inspect conn}) idle connection, giving up RDY")
+        NSQ.Logger.debug("(#{inspect conn}) idle connection, giving up RDY")
         {:ok, _cons_state} = update(cons, conn, 0, cons_state)
       end)
 
@@ -208,7 +207,7 @@ defmodule NSQ.Consumer.RDY do
       {:ok, cons_state}
     else
       [conn|rest] = possible_conns
-      Logger.debug("(#{inspect conn}) redistributing RDY")
+      NSQ.Logger.debug("(#{inspect conn}) redistributing RDY")
       {:ok, cons_state} = update(cons, conn, 1, cons_state)
       distribute(cons, rest, available_max_in_flight - 1, cons_state)
     end
@@ -249,7 +248,7 @@ defmodule NSQ.Consumer.RDY do
     # If this is for a connection that's retrying, kill the timer and clean up.
     if retry_pid = conn_info.retry_rdy_pid do
       if Process.alive?(retry_pid) do
-        Logger.debug("(#{inspect conn}) rdy retry pid #{inspect retry_pid} detected, killing")
+        NSQ.Logger.debug("(#{inspect conn}) rdy retry pid #{inspect retry_pid} detected, killing")
         Process.exit(retry_pid, :normal)
       end
 

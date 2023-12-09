@@ -7,7 +7,7 @@ defmodule NSQ.ProducerTest do
   @configured_nsqds ["127.0.0.1:6750", "127.0.0.1:6760"]
 
   setup do
-    Logger.configure(level: :warn)
+    NSQ.Logger.configure(level: :warn)
     HTTPotion.post("http://127.0.0.1:6751/topic/delete?topic=#{@test_topic}")
     HTTPotion.post("http://127.0.0.1:6761/topic/delete?topic=#{@test_topic}")
     HTTPotion.post("http://127.0.0.1:6771/topic/delete?topic=#{@test_topic}")

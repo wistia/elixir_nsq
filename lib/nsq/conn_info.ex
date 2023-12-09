@@ -1,7 +1,4 @@
 defmodule NSQ.ConnInfo do
-  require Logger
-
-
   @doc """
   Given a consumer state object and an nsqd host/port tuple, return the
   connection ID.

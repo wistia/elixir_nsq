@@ -4,7 +4,6 @@ defmodule NSQ.Connection.MessageHandling do
   alias NSQ.Connection.Buffer
   alias NSQ.Connection.Command
   import NSQ.Protocol
-  require Logger
 
 
   @doc """
@@ -95,9 +94,9 @@ defmodule NSQ.Connection.MessageHandling do
   defp log_error(state, reason, data) do
     :gen_event.notify(state.event_manager_pid, {:error, reason, data})
     if reason do
-      Logger.error "error: #{reason}\n#{inspect data}"
+      NSQ.Logger.error "error: #{reason}\n#{inspect data}"
     else
-      Logger.error "error: #{inspect data}"
+      NSQ.Logger.error "error: #{inspect data}"
     end
   end
 

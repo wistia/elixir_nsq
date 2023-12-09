@@ -43,7 +43,6 @@ defmodule NSQ.Producer do
   # ------------------------------------------------------- #
   # Directives                                              #
   # ------------------------------------------------------- #
-  require Logger
   import NSQ.Protocol
   use GenServer
 

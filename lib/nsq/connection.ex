@@ -7,7 +7,6 @@ defmodule NSQ.Connection do
   # ------------------------------------------------------- #
   # Directives                                              #
   # ------------------------------------------------------- #
-  require Logger
   alias NSQ.Connection.Command
   alias NSQ.Connection.Initializer
   alias NSQ.Connection.MessageHandling
@@ -179,7 +178,7 @@ defmodule NSQ.Connection do
 
   @spec close(pid, state) :: any
   def close(conn, conn_state \\ nil) do
-    Logger.debug "Closing connection #{inspect conn}"
+    NSQ.Logger.debug "Closing connection #{inspect conn}"
     conn_state = conn_state || get_state(conn)
 
     # send a CLS command and expect CLOSE_WAIT in response
@@ -195,9 +194,9 @@ defmodule NSQ.Connection do
     # either way, we're exiting
     case result do
       :ok ->
-        Logger.warn "#{inspect conn}: No more messages in flight. Exiting."
+        NSQ.Logger.warn "#{inspect conn}: No more messages in flight. Exiting."
       :timeout ->
-        Logger.error "#{inspect conn}: Timed out waiting for messages to finish. Exiting anyway."
+        NSQ.Logger.error "#{inspect conn}: Timed out waiting for messages to finish. Exiting anyway."
     end
 
     Process.exit(self(), :normal)
@@ -236,7 +235,7 @@ defmodule NSQ.Connection do
   @spec wait_for_zero_in_flight(pid, binary) :: any
   defp wait_for_zero_in_flight(agent_pid, conn_id) do
     [in_flight] = ConnInfo.fetch(agent_pid, conn_id, [:messages_in_flight])
-    Logger.debug("Conn #{inspect conn_id}: #{in_flight} still in flight")
+    NSQ.Logger.debug("Conn #{inspect conn_id}: #{in_flight} still in flight")
     if in_flight <= 0 do
       :ok
     else

@@ -4,7 +4,6 @@ defmodule NSQ.Connection.Initializer do
   alias NSQ.Connection.Buffer
   alias NSQ.ConnInfo
   import NSQ.Protocol
-  require Logger
 
   @socket_opts [as: :binary, mode: :passive, packet: :raw]
 
@@ -33,20 +32,20 @@ defmodule NSQ.Connection.Initializer do
           {:ok, %{state | connected: true}}
         {:error, reason} ->
           if length(state.config.nsqlookupds) > 0 do
-            Logger.warn "(#{inspect self()}) connect failed; #{reason}; discovery loop should respawn"
+            NSQ.Logger.warn "(#{inspect self()}) connect failed; #{reason}; discovery loop should respawn"
             {{:error, reason}, %{state | connect_attempts: state.connect_attempts + 1}}
           else
             if state.config.max_reconnect_attempts > 0 do
-              Logger.warn "(#{inspect self()}) connect failed; #{reason}; discovery loop should respawn"
+              NSQ.Logger.warn "(#{inspect self()}) connect failed; #{reason}; discovery loop should respawn"
               {{:error, reason}, %{state | connect_attempts: state.connect_attempts + 1}}
             else
-              Logger.error "(#{inspect self()}) connect failed; #{reason}; reconnect turned off; terminating connection"
+              NSQ.Logger.error "(#{inspect self()}) connect failed; #{reason}; reconnect turned off; terminating connection"
               Process.exit(self(), :connect_failed)
             end
           end
       end
     else
-      Logger.error "#{inspect self()}: Failed to connect; terminating connection"
+      NSQ.Logger.error "#{inspect self()}: Failed to connect; terminating connection"
       Process.exit(self(), :connect_failed)
     end
   end
@@ -77,14 +76,14 @@ defmodule NSQ.Connection.Initializer do
 
   @spec send_magic_v2(C.state) :: :ok
   defp send_magic_v2(conn_state) do
-    Logger.debug("(#{inspect self()}) sending magic v2...")
+    NSQ.Logger.debug("(#{inspect self()}) sending magic v2...")
     conn_state |> Buffer.send!(encode(:magic_v2))
   end
 
 
   @spec identify(C.state) :: {:ok, binary}
   defp identify(conn_state) do
-    Logger.debug("(#{inspect self()}) identifying...")
+    NSQ.Logger.debug("(#{inspect self()}) identifying...")
     identify_obj = encode({:identify, identify_props(conn_state)})
     conn_state |> Buffer.send!(identify_obj)
     {:response, json} = recv_nsq_response(conn_state)
@@ -116,8 +115,8 @@ defmodule NSQ.Connection.Initializer do
     z = :zlib.open
     :ok = z |> :zlib.inflateInit(-15)
     inflated = z |> :zlib.inflateChunk(data)
-    Logger.warn "inflated chunk?"
-    Logger.warn inspect inflated
+    NSQ.Logger.warn "inflated chunk?"
+    NSQ.Logger.warn inspect inflated
     :ok = z |> :zlib.inflateEnd
     :ok = z |> :zlib.close
     inflated
@@ -140,7 +139,7 @@ defmodule NSQ.Connection.Initializer do
     # wrap our socket with SSL if TLS is enabled
     conn_state =
       if parsed["tls_v1"] == true do
-        Logger.debug "Upgrading to TLS..."
+        NSQ.Logger.debug "Upgrading to TLS..."
         socket = Socket.SSL.connect! conn_state.socket, [
           cacertfile: conn_state.config.tls_cert,
           keyfile: conn_state.config.tls_key,
@@ -165,11 +164,11 @@ defmodule NSQ.Connection.Initializer do
     end
 
     if parsed["auth_required"] == true do
-      Logger.debug "sending AUTH"
+      NSQ.Logger.debug "sending AUTH"
       auth_cmd = encode({:auth, conn_state.config.auth_secret})
       conn_state |> Buffer.send!(auth_cmd)
       {:response, json} = recv_nsq_response(conn_state)
-      Logger.debug(json)
+      NSQ.Logger.debug(json)
     end
 
     {:ok, conn_state}
@@ -187,10 +186,10 @@ defmodule NSQ.Connection.Initializer do
 
   @spec subscribe(C.state) :: {:ok, binary}
   defp subscribe(%{topic: topic, channel: channel} = conn_state) do
-    Logger.debug "(#{inspect self()}) subscribe to #{topic} #{channel}"
+    NSQ.Logger.debug "(#{inspect self()}) subscribe to #{topic} #{channel}"
     conn_state |> Buffer.send!(encode({:sub, topic, channel}))
 
-    Logger.debug "(#{inspect self()}) wait for subscription acknowledgment"
+    NSQ.Logger.debug "(#{inspect self()}) wait for subscription acknowledgment"
     conn_state |> wait_for_ok!
   end
 

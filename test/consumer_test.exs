@@ -24,13 +24,12 @@ defmodule NSQ.ConsumerTest do
   alias NSQ.Consumer.Connections
   alias NSQ.Connection, as: Conn
   alias NSQ.ConnInfo
-  require Logger
 
   @test_topic "__nsq_consumer_test_topic__"
   @test_channel1 "__nsq_consumer_test_channel1__"
 
   setup do
-    Logger.configure(level: :warn)
+    NSQ.Logger.configure(level: :warn)
     HTTP.post("http://127.0.0.1:6751/topic/delete?topic=#{@test_topic}")
     HTTP.post("http://127.0.0.1:6761/topic/delete?topic=#{@test_topic}")
     HTTP.post("http://127.0.0.1:6771/topic/delete?topic=#{@test_topic}")
@@ -246,7 +245,7 @@ defmodule NSQ.ConsumerTest do
     [conn1] = Connections.get(cons)
     conn_state = Conn.get_state(conn1)
 
-    Logger.warn "Closing socket as part of test..."
+    NSQ.Logger.warn "Closing socket as part of test..."
     Socket.Stream.close(conn_state.socket)
 
     # Normally dead connections hang around until the next discovery loop run,

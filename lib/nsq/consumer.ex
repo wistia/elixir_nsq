@@ -79,7 +79,6 @@ defmodule NSQ.Consumer do
   # Directives                                              #
   # ------------------------------------------------------- #
   use GenServer
-  require Logger
   import NSQ.Protocol
   import NSQ.Consumer.Helpers
   alias NSQ.Consumer.Backoff

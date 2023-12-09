@@ -1,6 +1,5 @@
 defmodule NSQ.Lookupd do
   alias NSQ.Connection, as: C
-  require Logger
 
   @typedoc """
   All lookupd responses should return a map with these values. If the response
@@ -47,13 +46,13 @@ defmodule NSQ.Lookupd do
         %{} |> normalize_response
 
       %HTTPotion.Response{status_code: status, body: body} ->
-        Logger.error("Unexpected status code from #{lookupd_url}: #{status}")
+        NSQ.Logger.error("Unexpected status code from #{lookupd_url}: #{status}")
 
         %{status_code: status, data: body}
         |> normalize_response
 
       %HTTPotion.ErrorResponse{} = error ->
-        Logger.error("Error connecting to #{lookupd_url}: #{inspect(error)}")
+        NSQ.Logger.error("Error connecting to #{lookupd_url}: #{inspect(error)}")
         normalize_response(%{})
     end
   end

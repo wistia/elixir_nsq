@@ -5,7 +5,6 @@ defmodule NSQ.Consumer.Connections do
 
 
   import NSQ.Consumer.Helpers
-  require Logger
   alias NSQ.ConnInfo
   alias NSQ.Consumer, as: C
   alias NSQ.Consumer.RDY
@@ -31,7 +30,7 @@ defmodule NSQ.Consumer.Connections do
 
 
   def close(cons_state) do
-    Logger.info "Closing connections for consumer #{inspect self()}"
+    NSQ.Logger.info "Closing connections for consumer #{inspect self()}"
     connections = get(cons_state)
     Enum.each connections, fn({_, conn_pid}) ->
       Task.start_link(NSQ.Connection, :close, [conn_pid])
@@ -67,12 +66,12 @@ defmodule NSQ.Consumer.Connections do
   def discover_nsqds_and_connect(cons, cons_state) do
     nsqds = cond do
       length(cons_state.config.nsqlookupds) > 0 ->
-        Logger.debug "(#{inspect self()}) Discovering nsqds via nsqlookupds #{inspect cons_state.config.nsqlookupds}"
+        NSQ.Logger.debug "(#{inspect self()}) Discovering nsqds via nsqlookupds #{inspect cons_state.config.nsqlookupds}"
         cons_state.config.nsqlookupds
         |> NSQ.Lookupd.nsqds_with_topic(cons_state.topic)
 
       length(cons_state.config.nsqds) > 0 ->
-        Logger.debug "(#{inspect self()}) Using configured nsqds #{inspect cons_state.config.nsqds}"
+        NSQ.Logger.debug "(#{inspect self()}) Using configured nsqds #{inspect cons_state.config.nsqds}"
         cons_state.config.nsqds
 
       true ->
@@ -107,7 +106,7 @@ defmodule NSQ.Consumer.Connections do
   @spec connect_to_nsqds([C.host_with_port], pid, C.state) :: {:ok, C.state}
   def connect_to_nsqds(nsqds, cons, cons_state \\ nil) do
     if length(nsqds) > 0 do
-      Logger.info "Connecting to nsqds #{inspect nsqds}"
+      NSQ.Logger.info "Connecting to nsqds #{inspect nsqds}"
     end
     cons_state = Enum.reduce nsqds, cons_state, fn(nsqd, last_state) ->
       {:ok, new_state} = connect_to_nsqd(nsqd, cons, last_state)
@@ -146,7 +145,7 @@ defmodule NSQ.Consumer.Connections do
       {:ok, cons_state}
     catch
       :error, _ ->
-        Logger.error "#{inspect cons}: Error connecting to #{inspect nsqd}"
+        NSQ.Logger.error "#{inspect cons}: Error connecting to #{inspect nsqd}"
         conn_id = ConnInfo.conn_id(cons, nsqd)
         ConnInfo.delete(cons_state, conn_id)
         {:ok, cons_state}
@@ -163,7 +162,7 @@ defmodule NSQ.Consumer.Connections do
   @spec stop_connections([C.connection], pid, C.state) :: {:ok, C.state}
   def stop_connections(dead_conns, cons, cons_state) do
     if length(dead_conns) > 0 do
-      Logger.info "Stopping connections #{inspect dead_conns}"
+      NSQ.Logger.info "Stopping connections #{inspect dead_conns}"
     end
 
     cons_state = Enum.reduce dead_conns, cons_state, fn({nsqd, _pid}, last_state) ->
@@ -288,7 +287,7 @@ defmodule NSQ.Consumer.Connections do
     if is_integer(active) do
       active
     else
-      Logger.warn "(#{inspect self()}) non-integer #{inspect active} returned counting connections, returning 0 instead"
+      NSQ.Logger.warn "(#{inspect self()}) non-integer #{inspect active} returned counting connections, returning 0 instead"
       0
     end
   end
@@ -329,7 +328,7 @@ defmodule NSQ.Consumer.Connections do
       sec_since_last_msg = now() - last_msg_t
       ms_since_last_msg = sec_since_last_msg * 1000
 
-      Logger.debug(
+      NSQ.Logger.debug(
         "(#{inspect conn}) rdy: #{rdy_count} (last message received #{sec_since_last_msg} seconds ago)"
       )
 
