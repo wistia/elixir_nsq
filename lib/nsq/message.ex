@@ -193,16 +193,16 @@ defmodule NSQ.Message do
     rescue
       e ->
         NSQ.Logger.error "Error running message handler: #{inspect e}"
-        NSQ.Logger.error inspect System.stacktrace
+        NSQ.Logger.error inspect __STACKTRACE__
         {:req, -1, true}
     catch
       :exit, b ->
         NSQ.Logger.error "Caught exit running message handler: :exit, #{inspect b}"
-        NSQ.Logger.error inspect System.stacktrace
+        NSQ.Logger.error inspect __STACKTRACE__
         {:req, -1, true}
       a, b ->
         NSQ.Logger.error "Caught exception running message handler: #{inspect a}, #{inspect b}"
-        NSQ.Logger.error inspect System.stacktrace
+        NSQ.Logger.error inspect __STACKTRACE__
         {:req, -1, true}
     end
   end
