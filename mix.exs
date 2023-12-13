@@ -19,13 +19,9 @@ defmodule ElixirNsq.Mixfile do
   # Type "mix help compile.app" for more information
   def application do
     [
-      applications: [:logger, :httpotion, :socket2, :elixir_uuid, :jason],
-      extra_applications: extra_applications(Mix.env())
+      extra_applications: [:logger]
     ]
   end
-
-  defp extra_applications(:test), do: [:secure_random, :plug, :ranch, :plug_cowboy]
-  defp extra_applications(_), do: []
 
   # Dependencies can be Hex packages:
   #
