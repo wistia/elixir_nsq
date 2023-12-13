@@ -2,8 +2,8 @@ defmodule NSQ.Test.AuthServer do
   defmodule NSQ.Test.Router do
     use Plug.Router
 
-    plug :match
-    plug :dispatch
+    plug(:match)
+    plug(:dispatch)
 
     get "/auth" do
       json_response = %{
@@ -19,9 +19,7 @@ defmodule NSQ.Test.AuthServer do
         ]
       }
 
-
-
-      send_resp(conn, 200, Poison.encode!(json_response))
+      send_resp(conn, 200, Jason.encode!(json_response))
     end
 
     match _ do
@@ -31,6 +29,6 @@ defmodule NSQ.Test.AuthServer do
 
   def start(port) do
     [:telemetry] |> Enum.each(&Application.start/1)
-    Plug.Cowboy.http NSQ.Test.Router, [], port: port
+    Plug.Cowboy.http(NSQ.Test.Router, [], port: port)
   end
 end
