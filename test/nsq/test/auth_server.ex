@@ -1,17 +1,36 @@
 defmodule NSQ.Test.AuthServer do
-  # This sets up an auth server for NSQD (run from Procfile) so that we can
-  # test auth properly.
+  defmodule NSQ.Test.Router do
+    use Plug.Router
+
+    plug :match
+    plug :dispatch
+
+    get "/auth" do
+      json_response = %{
+        ttl: 3600,
+        identity: "johndoe",
+        identity_url: "http://127.0.0.1",
+        authorizations: [
+          %{
+            permissions: ["subscribe", "publish"],
+            topic: ".*",
+            channels: [".*"]
+          }
+        ]
+      }
+
+
+
+      send_resp(conn, 200, Poison.encode!(json_response))
+    end
+
+    match _ do
+      send_resp(conn, 404, "Not Found")
+    end
+  end
+
   def start(port) do
-    [:ranch, :cowlib, :cowboy, :http_server] |> Enum.each(&Application.start/1)
-    HttpServer.start(path: "/auth", port: port, response: Poison.encode! %{
-      ttl: 3600,
-      identity: "johndoe",
-      identity_url: "http://127.0.0.1",
-      authorizations: [%{
-        permissions: ["subscribe", "publish"],
-        topic: ".*",
-        channels: [".*"]
-      }]
-    })
+    [:telemetry] |> Enum.each(&Application.start/1)
+    Plug.Cowboy.http NSQ.Test.Router, [], port: port
   end
 end

@@ -14,16 +14,18 @@ jobs:
       fail-fast: false
       matrix:
         beam:
-          - elixir: "1.14.0"
-            otp: "25.1"
+          - elixir: "1.15.7"
+            otp: "25.3.2.7"
+          - elixir: "1.14.5"
+            otp: "25.3.2.7"
           - elixir: "1.13.4"
-            otp: "25.1"
+            otp: "24.3.4.14"
         nsq:
           - download: nsq-0.3.8.linux-amd64.go1.6.2
             version: v0.3.8
             worker_id: worker-id
-          - download: nsq-1.0.0-compat.linux-amd64.go1.8
-            version: v1.0.0-compat
+          - download: nsq-1.2.1.linux-amd64.go1.16.6
+            version: v1.2.1
             worker_id: node-id
     env:
       MIX_ENV: test
@@ -55,6 +57,3 @@ jobs:
           $NSQ_DOWNLOAD/bin/nsqlookupd --tcp-address=127.0.0.1:6780 --http-address=127.0.0.1:6781 --broadcast-address=127.0.0.1 &
       - name: "run tests"
         run: mix test
-
-
-
