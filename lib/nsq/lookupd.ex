@@ -62,7 +62,8 @@ defmodule NSQ.Lookupd do
     body = if body == nil || body == "", do: "{}", else: body
 
     if headers[:"X-Nsq-Content-Type"] == "nsq; version=1.0" do
-      Poison.decode!(body)
+      body
+      |> Jason.decode!()
       |> normalize_response
     else
       %{status_code: 200, status_txt: "OK", data: body}
