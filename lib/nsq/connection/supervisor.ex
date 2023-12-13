@@ -11,7 +11,6 @@ defmodule NSQ.Connection.Supervisor do
   use Supervisor
   alias NSQ.ConnInfo, as: ConnInfo
 
-
   # ------------------------------------------------------- #
   # Behaviour Implementation                                #
   # ------------------------------------------------------- #
@@ -19,10 +18,10 @@ defmodule NSQ.Connection.Supervisor do
     Supervisor.start_link(__MODULE__, :ok, opts)
   end
 
-
   def start_child(parent, nsqd, parent_state \\ nil, opts \\ []) do
     parent_state = parent_state || GenServer.call(parent, :state)
     conn_sup_pid = parent_state.conn_sup_pid
+
     args = [
       parent,
       nsqd,
@@ -32,18 +31,20 @@ defmodule NSQ.Connection.Supervisor do
       parent_state.conn_info_pid,
       parent_state.event_manager_pid
     ]
+
     conn_id = ConnInfo.conn_id(parent, nsqd)
 
     # When using nsqlookupd, we expect connections will be naturally
     # rediscovered if they fail.
-    opts = [restart: :temporary, id: conn_id] ++ opts
+    config =
+      [id: conn_id, start: {NSQ.Connection, :start_link, args}, restart: :temporary] ++ opts
 
-    child = worker(NSQ.Connection, args, opts)
+    child = Map.new(config)
+
     Supervisor.start_child(conn_sup_pid, child)
   end
 
-
   def init(:ok) do
-    supervise([], strategy: :one_for_one)
+    Supervisor.init([], strategy: :one_for_one)
   end
 end
