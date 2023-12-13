@@ -17,7 +17,7 @@ defmodule NSQ.Config do
     # Duration between polling lookupd for new producers, and fractional jitter
     # to add to the lookupd pool loop. this helps evenly distribute requests
     # even if multiple consumers restart at the same time
-	  #
+    #
     # NOTE: when not using nsqlookupd, lookupd_poll_interval represents the
     # duration of time between reconnection attempts
     lookupd_poll_interval: 1 * @minutes,
@@ -135,7 +135,6 @@ defmodule NSQ.Config do
 
   defstruct Enum.into(@default_config, [])
 
-
   @doc """
   Given a config, tell us what's wrong with it. If nothing is wrong, we'll
   return `{:ok, config}`.
@@ -153,18 +152,24 @@ defmodule NSQ.Config do
 
     %NSQ.Config{} = config
 
-    errors = errors ++ Enum.map @valid_ranges, fn({name, {min, max}}) ->
-      case range_error(Map.get(config, name), min, max) do
-        {:error, reason} -> "#{name}: #{reason}"
-        :ok -> nil
-      end
-    end
+    errors =
+      errors ++
+        Enum.map(@valid_ranges, fn {name, {min, max}} ->
+          case range_error(Map.get(config, name), min, max) do
+            {:error, reason} -> "#{name}: #{reason}"
+            :ok -> nil
+          end
+        end)
 
-    errors = [no_match_error(
-      config.backoff_strategy, [:exponential, :test]
-    ) | errors]
+    errors = [
+      no_match_error(
+        config.backoff_strategy,
+        [:exponential, :test]
+      )
+      | errors
+    ]
 
-    errors = Enum.reject(errors, fn(v) -> v == nil end)
+    errors = Enum.reject(errors, fn v -> v == nil end)
 
     if length(errors) > 0 do
       {:error, errors}
@@ -173,31 +178,31 @@ defmodule NSQ.Config do
     end
   end
 
-
   def normalize(config) do
     config = %NSQ.Config{config | nsqds: normalize_hosts(config.nsqds)}
     config = %NSQ.Config{config | nsqlookupds: normalize_hosts(config.nsqlookupds)}
     {:ok, config}
   end
 
-
   def normalize_hosts(hosts) do
-    Enum.map hosts, fn (host_with_port) ->
+    Enum.map(hosts, fn host_with_port ->
       cond do
         is_tuple(host_with_port) ->
           {_host, _port} = host_with_port
+
         is_binary(host_with_port) ->
           [host, port] = host_with_port |> String.split(":")
           {port, _} = Integer.parse(port)
           {host, port}
+
         is_list(host_with_port) ->
           {_host, _port} = List.to_tuple(host_with_port)
-        true ->
-          raise "Invalid host definition #{inspect host_with_port}"
-      end
-    end
-  end
 
+        true ->
+          raise "Invalid host definition #{inspect(host_with_port)}"
+      end
+    end)
+  end
 
   defp range_error(val, min, max) do
     cond do
@@ -208,11 +213,9 @@ defmodule NSQ.Config do
     end
   end
 
-
   defp matches_any?(val, candidates) do
-    Enum.any?(candidates, fn(candidate) -> candidate == val end)
+    Enum.any?(candidates, fn candidate -> candidate == val end)
   end
-
 
   defp no_match_error(val, candidates) do
     if matches_any?(val, candidates) do

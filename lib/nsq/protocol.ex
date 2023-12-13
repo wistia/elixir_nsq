@@ -17,6 +17,7 @@ defmodule NSQ.Protocol do
 
       {:identify, options} ->
         json = Jason.encode!(options)
+
         "IDENTIFY\n" <> <<byte_size(json)::size(32)>> <> json
 
       {:auth, secret_key} ->
