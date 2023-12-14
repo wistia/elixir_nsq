@@ -26,8 +26,6 @@ NSQ.Producer.mpub(producer, ["one", "two", "three"])
 # specify a topic
 NSQ.Producer.pub(producer, "different-topic", "another message")
 NSQ.Producer.mpub(producer, "different-topic", ["four", "five", "six"])
-
-NSQ.Producer.close(producer)
 ```
 
 ## Quick Start
