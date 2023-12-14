@@ -38,20 +38,20 @@ defmodule NSQ.Lookupd do
     lookupd_url = "http://#{host}:#{port}/lookup?topic=#{topic}"
     headers = [{"Accept", "application/vnd.nsq; version=1.0"}]
 
-    case HTTPotion.get(lookupd_url, headers: headers) do
-      %HTTPotion.Response{status_code: 200, body: body, headers: headers} ->
+    case HTTPoison.get(lookupd_url, headers) do
+      {:ok, %HTTPoison.Response{status_code: 200, body: body, headers: headers}} ->
         normalize_200_response(headers, body)
 
-      %HTTPotion.Response{status_code: 404} ->
+      {:ok, %HTTPoison.Response{status_code: 404}} ->
         %{} |> normalize_response
 
-      %HTTPotion.Response{status_code: status, body: body} ->
+      {:ok, %HTTPoison.Response{status_code: status, body: body}} ->
         NSQ.Logger.error("Unexpected status code from #{lookupd_url}: #{status}")
 
         %{status_code: status, data: body}
         |> normalize_response
 
-      %HTTPotion.ErrorResponse{} = error ->
+      {:error, %HTTPoison.Error{} = error} ->
         NSQ.Logger.error("Error connecting to #{lookupd_url}: #{inspect(error)}")
         normalize_response(%{})
     end
@@ -61,13 +61,17 @@ defmodule NSQ.Lookupd do
   defp normalize_200_response(headers, body) do
     body = if body == nil || body == "", do: "{}", else: body
 
-    if headers[:"X-Nsq-Content-Type"] == "nsq; version=1.0" do
-      body
-      |> Jason.decode!()
-      |> normalize_response
-    else
-      %{status_code: 200, status_txt: "OK", data: body}
-      |> normalize_response
+    header = "X-Nsq-Content-Type"
+
+    case List.keyfind(headers, header, 0) do
+      {^header, "nsq; version=1.0"} ->
+        body
+        |> Jason.decode!()
+        |> normalize_response
+
+      _ ->
+        %{status_code: 200, status_txt: "OK", data: body}
+        |> normalize_response
     end
   end
 

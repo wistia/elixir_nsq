@@ -20,7 +20,7 @@ defmodule NSQ.ConsumerTest do
   doctest NSQ.Consumer
   alias NSQ.Consumer, as: Cons
   alias NSQ.Consumer.Helpers, as: H
-  alias HTTPotion, as: HTTP
+  alias HTTPoison, as: HTTP
   alias NSQ.Consumer.Connections
   alias NSQ.Connection, as: Conn
   alias NSQ.ConnInfo
@@ -30,10 +30,10 @@ defmodule NSQ.ConsumerTest do
 
   setup do
     NSQ.Logger.configure(level: :warn)
-    HTTP.post("http://127.0.0.1:6751/topic/delete?topic=#{@test_topic}")
-    HTTP.post("http://127.0.0.1:6761/topic/delete?topic=#{@test_topic}")
-    HTTP.post("http://127.0.0.1:6771/topic/delete?topic=#{@test_topic}")
-    HTTP.post("http://127.0.0.1:6781/topic/delete?topic=#{@test_topic}")
+    HTTP.post("http://127.0.0.1:6751/topic/delete?topic=#{@test_topic}", "")
+    HTTP.post("http://127.0.0.1:6761/topic/delete?topic=#{@test_topic}", "")
+    HTTP.post("http://127.0.0.1:6771/topic/delete?topic=#{@test_topic}", "")
+    HTTP.post("http://127.0.0.1:6781/topic/delete?topic=#{@test_topic}", "")
     :ok
   end
 
@@ -59,10 +59,10 @@ defmodule NSQ.ConsumerTest do
     NSQ.Consumer.event_manager(consumer)
     |> :gen_event.add_handler(NSQ.ConsumerTest.EventForwarder, self())
 
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "hello")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "hello")
     assert_receive {:message_finished, _}, 2000
 
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "too_slow")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "too_slow")
     assert_receive {:message_requeued, _}, 2000
   end
 
@@ -88,7 +88,7 @@ defmodule NSQ.ConsumerTest do
     NSQ.Consumer.event_manager(consumer)
     |> :gen_event.add_handler(NSQ.ConsumerTest.EventForwarder, self())
 
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "hello")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "hello")
 
     # Without touch, this message would fail after 1 second. So we test that
     # it takes longer than 1 second but succeeds.
@@ -111,12 +111,12 @@ defmodule NSQ.ConsumerTest do
         end
       })
 
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "hello")
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "hello")
-    HTTP.post("http://127.0.0.1:6761/pub?topic=#{@test_topic}", body: "hello")
-    HTTP.post("http://127.0.0.1:6761/pub?topic=#{@test_topic}", body: "hello")
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "hello")
-    HTTP.post("http://127.0.0.1:6761/pub?topic=#{@test_topic}", body: "hello")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "hello")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "hello")
+    HTTP.post("http://127.0.0.1:6761/pub?topic=#{@test_topic}", "hello")
+    HTTP.post("http://127.0.0.1:6761/pub?topic=#{@test_topic}", "hello")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "hello")
+    HTTP.post("http://127.0.0.1:6761/pub?topic=#{@test_topic}", "hello")
 
     :timer.sleep(100)
     [info1, info2] = NSQ.Consumer.conn_info(consumer) |> Map.values()
@@ -155,14 +155,14 @@ defmodule NSQ.ConsumerTest do
         end
       })
 
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "fast")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "fast")
     assert_receive(:handled, 2000)
 
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "slow")
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "medium")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "slow")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "medium")
     NSQ.Consumer.close(consumer)
     :timer.sleep(50)
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "fast")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "fast")
     refute_receive(:handled, 2000)
   end
 
@@ -181,7 +181,7 @@ defmodule NSQ.ConsumerTest do
     NSQ.Consumer.event_manager(consumer)
     |> :gen_event.add_handler(NSQ.ConsumerTest.EventForwarder, self())
 
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "HTTP message")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "HTTP message")
     assert_receive(:handled, 2000)
 
     assert_receive({:message, %NSQ.Message{}}, 2000)
@@ -213,11 +213,11 @@ defmodule NSQ.ConsumerTest do
     previous_timestamp = info.last_msg_timestamp
     :timer.sleep(1000)
 
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "ok")
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "req")
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "req2000")
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "fail")
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "backoff")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "ok")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "req")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "req2000")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "fail")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "backoff")
 
     assert_receive({:message, _}, 2000)
     assert_receive({:message, _}, 2000)
@@ -256,7 +256,7 @@ defmodule NSQ.ConsumerTest do
       })
 
     # Send a message so we can be sure the connection is up and working first.
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "HTTP message")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "HTTP message")
     assert_receive(:handled, 2000)
 
     # Abruptly close the connection
@@ -281,7 +281,7 @@ defmodule NSQ.ConsumerTest do
     assert conn1 != conn2
 
     # Send another message so we can verify the new connection is working.
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "HTTP message")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "HTTP message")
     assert_receive(:handled, 2000)
   end
 
@@ -298,10 +298,10 @@ defmodule NSQ.ConsumerTest do
       end
     })
 
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "HTTP message")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "HTTP message")
     assert_receive(:handled, 2000)
 
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "HTTP message")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "HTTP message")
     assert_receive(:handled, 2000)
   end
 
@@ -320,8 +320,8 @@ defmodule NSQ.ConsumerTest do
         end
       })
 
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "HTTP message")
-    HTTP.post("http://127.0.0.1:6761/pub?topic=#{@test_topic}", body: "HTTP message")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "HTTP message")
+    HTTP.post("http://127.0.0.1:6761/pub?topic=#{@test_topic}", "HTTP message")
 
     assert_receive(:handled, 2000)
     assert_receive(:handled, 2000)
@@ -383,8 +383,9 @@ defmodule NSQ.ConsumerTest do
       end
     })
 
-    HTTP.post("http://127.0.0.1:6751/mpub?topic=#{@test_topic}",
-      body: "mpubtest\nmpubtest\nmpubtest"
+    HTTP.post(
+      "http://127.0.0.1:6751/mpub?topic=#{@test_topic}",
+      "mpubtest\nmpubtest\nmpubtest"
     )
 
     assert_receive(:handled, 2000)
@@ -412,7 +413,7 @@ defmodule NSQ.ConsumerTest do
     })
 
     Enum.map(1..1000, fn _i ->
-      HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "HTTP message")
+      HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "HTTP message")
     end)
 
     assert_receive_n_times(:handled, 1000, 2000)
@@ -468,11 +469,11 @@ defmodule NSQ.ConsumerTest do
 
     # Send one successful message through so our subsequent timing is more
     # predictable.
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "HTTP message")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "HTTP message")
     assert_receive({:message_finished, _}, 5000)
 
     # Our message handler enters into backoff mode and requeues the message.
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "HTTP message")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "HTTP message")
     assert_receive({:message_requeued, _}, 2000)
     assert_receive(:backoff, 1000)
 
@@ -528,7 +529,7 @@ defmodule NSQ.ConsumerTest do
     assert_receive({:message_finished, _}, 2000)
 
     # Send a successful message and leave backoff mode! (I hope!)
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "HTTP message")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "HTTP message")
     assert_receive({:message_finished, _}, 2000)
     assert_receive(:resume, 100)
     cons_state = Cons.get_state(consumer)
@@ -558,7 +559,7 @@ defmodule NSQ.ConsumerTest do
     cons = Cons.get(cons_sup_pid)
     [conn] = Connections.get(cons)
 
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "HTTP message")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "HTTP message")
     refute_receive :handled, 500
     cons_state = Cons.get_state(cons)
     assert ConnInfo.fetch(cons_state, conn, :retry_rdy_pid) == nil
@@ -639,10 +640,10 @@ defmodule NSQ.ConsumerTest do
       end
     })
 
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "HTTP message")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "HTTP message")
     assert_receive(:handled, 2000)
 
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "HTTP message")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "HTTP message")
     assert_receive(:handled, 2000)
   end
 
@@ -665,7 +666,7 @@ defmodule NSQ.ConsumerTest do
         end
       })
 
-      HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "HTTP message")
+      HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "HTTP message")
       refute_receive(:handled, 2000)
     end
   end
@@ -688,12 +689,12 @@ defmodule NSQ.ConsumerTest do
     assert NSQ.Consumer.starved?(consumer) == false
 
     # One message in flight, 50% of last_rdy, not starved
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "HTTP message")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "HTTP message")
     assert_receive({:message, _}, 2000)
     assert NSQ.Consumer.starved?(consumer) == false
 
     # Two messages in flight, 100% of last_rdy, __starved__
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "HTTP message")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "HTTP message")
     assert_receive({:message, _}, 2000)
     assert NSQ.Consumer.starved?(consumer) == true
 
@@ -718,10 +719,10 @@ defmodule NSQ.ConsumerTest do
       end
     })
 
-    HTTP.post("http://127.0.0.1:6766/pub?topic=#{@test_topic}", body: "HTTP message")
+    HTTP.post("http://127.0.0.1:6766/pub?topic=#{@test_topic}", "HTTP message")
     assert_receive(:handled, 2000)
 
-    HTTP.post("http://127.0.0.1:6766/pub?topic=#{@test_topic}", body: "HTTP message")
+    HTTP.post("http://127.0.0.1:6766/pub?topic=#{@test_topic}", "HTTP message")
     assert_receive(:handled, 2000)
   end
 
@@ -739,10 +740,10 @@ defmodule NSQ.ConsumerTest do
       end
     })
 
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "HTTP message")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "HTTP message")
     assert_receive(:handled, 2000)
 
-    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", body: "HTTP message")
+    HTTP.post("http://127.0.0.1:6751/pub?topic=#{@test_topic}", "HTTP message")
     assert_receive(:handled, 2000)
   end
 
@@ -767,10 +768,10 @@ defmodule NSQ.ConsumerTest do
       end
     })
 
-    HTTP.post("http://127.0.0.1:6766/pub?topic=#{@test_topic}", body: "HTTP message")
+    HTTP.post("http://127.0.0.1:6766/pub?topic=#{@test_topic}", "HTTP message")
     assert_receive(:handled, 2000)
 
-    HTTP.post("http://127.0.0.1:6766/pub?topic=#{@test_topic}", body: "HTTP message")
+    HTTP.post("http://127.0.0.1:6766/pub?topic=#{@test_topic}", "HTTP message")
     assert_receive(:handled, 2000)
   end
 
