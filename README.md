@@ -1,7 +1,5 @@
 # elixir_nsq
 
-[![Build Status](https://travis-ci.org/wistia/elixir_nsq.svg?branch=master)](https://travis-ci.org/wistia/elixir_nsq)
-
 `elixir_nsq` is a client library for NSQ. Use it in your Elixir or Erlang
 applications to handle messages asynchronously. This library seeks to be
 complete, well-tested, and easy to use.
