@@ -34,10 +34,10 @@ defmodule ElixirNsq.Mixfile do
   # Type "mix help deps" for more examples and options
   defp deps do
     [
-      {:httpotion, "~> 3.2"},
       {:elixir_uuid, "~> 1.2"},
       {:socket2, "~> 2.1"},
       {:jason, "~> 1.4"},
+      {:httpoison, "~> 2.0"},
 
       # testing
       {:secure_random, "~> 0.5", only: :test},
