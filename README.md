@@ -14,7 +14,7 @@ To use this, you will need to have [NSQ](http://nsq.io/).
 
 ```elixir
 {:ok, producer} = NSQ.Producer.Supervisor.start_link("my-topic", %NSQ.Config{
-  nsqds: ["127.0.0.1:4150", "127.0.0.1:4151"]
+  nsqds: ["127.0.0.1:4150"]
 })
 
 # publish to the default topic "my-topic"
@@ -95,7 +95,7 @@ If you're not using nsqlookupd, you can specify nsqds directly:
 
 ```elixir
 {:ok, consumer} = NSQ.Consumer.Supervisor.start_link("my-topic", "my-channel", %NSQ.Config{
-  nsqds: ["127.0.0.1:4150", "127.0.0.1:4151"],
+  nsqds: ["127.0.0.1:4150"],
   message_handler: fn(body, msg) ->
     :ok
   end
@@ -133,7 +133,7 @@ end
 
 def setup_consumer do
   {:ok, consumer} = NSQ.Consumer.Supervisor.start_link("my-topic", "my-channel", %NSQ.Config{
-    nsqds: ["127.0.0.1:4150", "127.0.0.1:4151"],
+    nsqds: ["127.0.0.1:4150"],
     message_handler: fn(body, msg) ->
       :ok
     end
