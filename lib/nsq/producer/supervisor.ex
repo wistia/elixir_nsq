@@ -7,7 +7,7 @@ defmodule NSQ.Producer.Supervisor do
 
   @impl true
   def init({topic, config}) do
-    children = [{NSQ.Producer, [topic, config]}]
+    children = [{NSQ.Producer, {topic, config}}]
 
     Supervisor.init(children, strategy: :one_for_one)
   end

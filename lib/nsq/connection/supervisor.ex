@@ -22,7 +22,7 @@ defmodule NSQ.Connection.Supervisor do
     parent_state = parent_state || GenServer.call(parent, :state)
     conn_sup_pid = parent_state.conn_sup_pid
 
-    args = [
+    args = {
       parent,
       nsqd,
       parent_state.config,
@@ -30,7 +30,7 @@ defmodule NSQ.Connection.Supervisor do
       parent_state.channel,
       parent_state.conn_info_pid,
       parent_state.event_manager_pid
-    ]
+    }
 
     conn_id = ConnInfo.conn_id(parent, nsqd)
 

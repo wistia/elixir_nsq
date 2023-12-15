@@ -63,15 +63,14 @@ defmodule NSQ.Connection do
   # ------------------------------------------------------- #
   # Behaviour Implementation                                #
   # ------------------------------------------------------- #
-  @spec start_link(pid | host_with_port | NSQ.Config.t() | String.t() | String.t() | pid) ::
+  @spec start_link({pid | host_with_port | NSQ.Config.t() | String.t() | String.t() | pid}) ::
           {:ok, pid}
-  def start_link([parent, nsqd, config, topic, channel, conn_info_pid, event_manager_pid]),
-    do: start_link([parent, nsqd, config, topic, channel, conn_info_pid, event_manager_pid, []])
+  def start_link({parent, nsqd, config, topic, channel, conn_info_pid, event_manager_pid}),
+    do: start_link({parent, nsqd, config, topic, channel, conn_info_pid, event_manager_pid, []})
 
-  @spec start_link(pid | host_with_port | NSQ.Config.t() | String.t() | String.t() | pid | list) ::
+  @spec start_link({pid | host_with_port | NSQ.Config.t() | String.t() | String.t() | pid | list}) ::
           {:ok, pid}
-
-  def start_link([parent, nsqd, config, topic, channel, conn_info_pid, event_manager_pid, opts]) do
+  def start_link({parent, nsqd, config, topic, channel, conn_info_pid, event_manager_pid, opts}) do
     state = %{
       @initial_state
       | parent: parent,
