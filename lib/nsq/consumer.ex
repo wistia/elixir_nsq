@@ -131,8 +131,11 @@ defmodule NSQ.Consumer do
   @doc """
   Starts a Consumer process, called via the supervisor.
   """
-  @spec start_link(String.t(), String.t(), NSQ.Config.t(), list) :: {:ok, pid}
-  def start_link(topic, channel, config, opts \\ []) do
+  @spec start_link(String.t() | String.t() | NSQ.Config.t()) :: {:ok, pid}
+  def start_link([topic, channel, config]), do: start_link([topic, channel, config, []])
+
+  @spec start_link(String.t() | String.t() | NSQ.Config.t() | list) :: {:ok, pid}
+  def start_link([topic, channel, config, opts]) do
     {:ok, config} = NSQ.Config.validate(config)
     {:ok, config} = NSQ.Config.normalize(config)
     unless is_valid_topic_name?(topic), do: raise("Invalid topic name #{topic}")

@@ -12,10 +12,7 @@ defmodule NSQ.Consumer.Supervisor do
     rdy_loop_id = String.to_atom("#{consumer_name}_rdy_loop")
 
     children = [
-      %{
-        id: NSQ.Consumer,
-        start: {NSQ.Consumer, :start_link, [topic, channel, config, [name: consumer_name]]}
-      },
+      {NSQ.Consumer, [topic, channel, config, [name: consumer_name]]},
       Supervisor.child_spec(
         {Task, fn -> NSQ.Consumer.Connections.discovery_loop(consumer_name) end},
         id: discovery_loop_id

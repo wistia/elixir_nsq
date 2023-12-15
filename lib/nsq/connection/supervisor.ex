@@ -36,10 +36,9 @@ defmodule NSQ.Connection.Supervisor do
 
     # When using nsqlookupd, we expect connections will be naturally
     # rediscovered if they fail.
-    config =
-      [id: conn_id, start: {NSQ.Connection, :start_link, args}, restart: :temporary] ++ opts
+    opts = [id: conn_id, restart: :temporary] ++ opts
 
-    child = Map.new(config)
+    child = Supervisor.child_spec({NSQ.Connection, args}, opts)
 
     Supervisor.start_child(conn_sup_pid, child)
   end
