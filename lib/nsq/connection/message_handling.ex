@@ -14,6 +14,7 @@ defmodule NSQ.Connection.MessageHandling do
     case conn_state |> Buffer.recv(4) do
       # close the read loop if socket is closed
       {:error, "socket closed"} ->
+        NSQ.Logger.error("error: socket closed - closing read loop")
         conn |> C.close(conn_state)
 
       {:error, :timeout} ->
