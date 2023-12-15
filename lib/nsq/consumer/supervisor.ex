@@ -13,13 +13,16 @@ defmodule NSQ.Consumer.Supervisor do
 
     children = [
       {NSQ.Consumer, [topic, channel, config, [name: consumer_name]]},
+      # Tasks have temporary restart policy by default
       Supervisor.child_spec(
         {Task, fn -> NSQ.Consumer.Connections.discovery_loop(consumer_name) end},
-        id: discovery_loop_id
+        id: discovery_loop_id,
+        restart: :permanent
       ),
       Supervisor.child_spec(
         {Task, fn -> NSQ.Consumer.RDY.redistribute_loop(consumer_name) end},
-        id: rdy_loop_id
+        id: rdy_loop_id,
+        restart: :permanent
       )
     ]
 
