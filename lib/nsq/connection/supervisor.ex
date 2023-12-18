@@ -22,7 +22,7 @@ defmodule NSQ.Connection.Supervisor do
     parent_state = parent_state || GenServer.call(parent, :state)
     conn_sup_pid = parent_state.conn_sup_pid
 
-    args = [
+    args = {
       parent,
       nsqd,
       parent_state.config,
@@ -30,16 +30,15 @@ defmodule NSQ.Connection.Supervisor do
       parent_state.channel,
       parent_state.conn_info_pid,
       parent_state.event_manager_pid
-    ]
+    }
 
     conn_id = ConnInfo.conn_id(parent, nsqd)
 
     # When using nsqlookupd, we expect connections will be naturally
     # rediscovered if they fail.
-    config =
-      [id: conn_id, start: {NSQ.Connection, :start_link, args}, restart: :temporary] ++ opts
+    opts = [id: conn_id, restart: :temporary] ++ opts
 
-    child = Map.new(config)
+    child = Supervisor.child_spec({NSQ.Connection, args}, opts)
 
     Supervisor.start_child(conn_sup_pid, child)
   end

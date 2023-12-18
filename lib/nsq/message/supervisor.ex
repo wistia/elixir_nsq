@@ -17,8 +17,8 @@ defmodule NSQ.Message.Supervisor do
   def start_child(msg_sup_pid, message, opts \\ []) do
     # If a message fails, NSQ will handle requeueing.
     id = message.id <> "-" <> UUID.uuid4(:hex)
-    config = [id: id, start: {NSQ.Message, :start_link, [message]}, restart: :temporary] ++ opts
-    child = Map.new(config)
+    opts = [id: id, restart: :temporary] ++ opts
+    child = Supervisor.child_spec({NSQ.Message, message}, opts)
     Supervisor.start_child(msg_sup_pid, child)
   end
 
