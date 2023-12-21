@@ -12,6 +12,11 @@ defmodule NSQ.Connection.MessageHandling do
   """
   def recv_nsq_messages(conn_state, conn) do
     case conn_state |> Buffer.recv(4) do
+      # close the read loop if socket is closed
+      {:error, "socket closed"} ->
+        NSQ.Logger.error("error: socket closed - closing read loop")
+        conn |> C.close(conn_state)
+
       {:error, :timeout} ->
         # If publishing is quiet, we won't receive any messages in the timeout.
         # This is fine. Let's just try again!
