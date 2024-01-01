@@ -1,7 +1,5 @@
 # elixir_nsq
 
-[![Build Status](https://travis-ci.org/wistia/elixir_nsq.svg?branch=master)](https://travis-ci.org/wistia/elixir_nsq)
-
 `elixir_nsq` is a client library for NSQ. Use it in your Elixir or Erlang
 applications to handle messages asynchronously. This library seeks to be
 complete, well-tested, and easy to use.
@@ -16,7 +14,7 @@ To use this, you will need to have [NSQ](http://nsq.io/).
 
 ```elixir
 {:ok, producer} = NSQ.Producer.Supervisor.start_link("my-topic", %NSQ.Config{
-  nsqds: ["127.0.0.1:4150", "127.0.0.1:4151"]
+  nsqds: ["127.0.0.1:4150"]
 })
 
 # publish to the default topic "my-topic"
@@ -26,8 +24,6 @@ NSQ.Producer.mpub(producer, ["one", "two", "three"])
 # specify a topic
 NSQ.Producer.pub(producer, "different-topic", "another message")
 NSQ.Producer.mpub(producer, "different-topic", ["four", "five", "six"])
-
-NSQ.Producer.close(producer)
 ```
 
 ## Quick Start
@@ -36,7 +32,7 @@ NSQ.Producer.close(producer)
 
 ```elixir
 defp deps do
-  [{:elixir_nsq, "~> 1.1.0"}]
+  [{:elixir_nsq, "~> 1.2.0"}]
 end
 
 defp applications do
@@ -99,7 +95,7 @@ If you're not using nsqlookupd, you can specify nsqds directly:
 
 ```elixir
 {:ok, consumer} = NSQ.Consumer.Supervisor.start_link("my-topic", "my-channel", %NSQ.Config{
-  nsqds: ["127.0.0.1:4150", "127.0.0.1:4151"],
+  nsqds: ["127.0.0.1:4150"],
   message_handler: fn(body, msg) ->
     :ok
   end
@@ -137,7 +133,7 @@ end
 
 def setup_consumer do
   {:ok, consumer} = NSQ.Consumer.Supervisor.start_link("my-topic", "my-channel", %NSQ.Config{
-    nsqds: ["127.0.0.1:4150", "127.0.0.1:4151"],
+    nsqds: ["127.0.0.1:4150"],
     message_handler: fn(body, msg) ->
       :ok
     end
