@@ -1,0 +1,15 @@
+# this is a catalog entity descriptor file for our Backstage instance (https://backstage.wistia.cloud)
+
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: elixir_nsq
+  description: NSQ client library for Elixir
+  annotations:
+    github.com/project-slug: wistia/elixir_nsq
+  tags:
+    - lang#elixir
+spec:
+  type: library
+  owner: infrastructure
+  lifecycle: production

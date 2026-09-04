@@ -104,7 +104,7 @@ If you're not using nsqlookupd, you can specify nsqds directly:
 
 ## Configuration
 
-Check https://github.com/wistia/elixir_nsq/blob/master/lib/nsq/config.ex for
+Check https://github.com/wistia/elixir_nsq/blob/main/lib/nsq/config.ex for
 supported config values.
 
 ## Get notified
